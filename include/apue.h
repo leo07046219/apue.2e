@@ -22,6 +22,7 @@
 #include <string.h>		/* for convenience */
 #include <unistd.h>		/* for convenience */
 #include <signal.h>		/* for SIG_ERR */
+#include <assert.h>
 
 #define	MAXLINE	4096			/* max line length */
 
