@@ -13,7 +13,8 @@ int main(void)
 		err_sys("fork error");
 	} 
     else if (pid == 0) 
-    {		/* first child */
+    {		
+        /* first child */
         if ((pid = fork()) < 0)
         {
             err_sys("fork error");
@@ -21,7 +22,6 @@ int main(void)
         else if (pid > 0)
         {
             exit(0);	/* parent from second fork == first child */
-
         }
 
 		/*
@@ -29,8 +29,10 @@ int main(void)
 		 * as our real parent calls exit() in the statement above.
 		 * Here's where we'd continue executing, knowing that when
 		 * we're done, init will reap our status.
+         孙进程，但子进程exit(0)时，成为孤儿进程，被init托管，
+         当其结束时，init会自动清除进程残留，必定不会形成僵死进程
 		 */
-		sleep(2);
+		sleep(2);/*保证打印父进程(init)id时，第一个子进程已经终止，*/
 		printf("second child, parent pid = %d\n", getppid());
 
 		exit(0);
@@ -48,3 +50,10 @@ int main(void)
 
 	exit(0);
 }
+
+/*
+ubuntu
+../apue.2e/proc$ ./fork2
+../apue.2e/proc$ second child, parent pid = 1801
+Y？
+*/
