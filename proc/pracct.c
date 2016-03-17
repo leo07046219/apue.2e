@@ -74,6 +74,6 @@ Turning on process accounting, file set to the default '/var/log/account/pacct'.
 
 3.sudo accton off
 4..../apue.2e/proc$ ./pracct /var/log/account/pacct
-5.
+5.ubuntu下，程序运行后显示的进程名称有乱码
 
 */
