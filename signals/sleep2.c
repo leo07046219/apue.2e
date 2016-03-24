@@ -26,3 +26,7 @@ unsigned int sleep2(unsigned int nsecs)
 
 	return(alarm(0));		/* turn off timer, return unslept time */
 }
+/*
+避免了sleep1.c中的竞争条件，保证了闹钟在pause之前被触发
+问题：SIGALARM中断了某个其他信号处理程序，则调用longjmp会提早终止该信号处理程序
+*/
