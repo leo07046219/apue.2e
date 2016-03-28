@@ -14,7 +14,7 @@ int system(const char *cmdstring)	/* with appropriate signal handling */
 
     if (NULL == cmdstring)
     {
-        return(1);		/* always a command processor with UNIX */
+        return(1);		            /* always a command processor with UNIX */
     }
 
 	ignore.sa_handler = SIG_IGN;	/* ignore SIGINT and SIGQUIT */
@@ -40,7 +40,7 @@ int system(const char *cmdstring)	/* with appropriate signal handling */
 
 	if ((pid = fork()) < 0) 
     {
-		status = -1;	/* probably out of processes */
+		status = -1;	            /* probably out of processes */
 	} 
     else if (0 == pid) 
     {			
@@ -51,7 +51,7 @@ int system(const char *cmdstring)	/* with appropriate signal handling */
 		sigprocmask(SIG_SETMASK, &savemask, NULL);
 
 		execl("/bin/sh", "sh", "-c", cmdstring, (char *)0);
-		_exit(127);		/* exec error */
+		_exit(127);		            /* exec error */
 	} 
     else 
     {						
@@ -83,3 +83,9 @@ int system(const char *cmdstring)	/* with appropriate signal handling */
 
 	return(status);
 }
+/*
+1.中断或退出字符不向调用进程发送信号；
+2.不向调用进程发送SIGCHLD信号；
+3.system的返回值，是shell的终止状态，但并不总是执行命令字符串进程的终止状态，
+仅当shell本身异常终止时，system的返回值才报告一个异常终止；
+*/
