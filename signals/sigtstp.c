@@ -1,4 +1,4 @@
-/*10-22 如何处理SIGTSTP*/
+/*10-22  如何处理SIGTSTP*/
 
 #include "apue.h"
 
