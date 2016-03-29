@@ -43,5 +43,3 @@ unsigned int sleep(unsigned int nsecs)
 /*
 可靠地处理信号，避免了早期实现中的竞争条件，但未才处理与以前设置的闹钟的交互作用
 */
-
-/*TODO: 待提交*/
