@@ -50,3 +50,7 @@ int main(void)
 
 	exit(0);
 }
+/*
+1.pthread_create、pthread_exit函数的void指针可以传一个结构体地址，
+但必须保证该结构所使用的内存在调用者完成调用以后仍然有效。
+*/
