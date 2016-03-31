@@ -99,7 +99,7 @@ void foo_rele(struct foo *fp) /* release a reference to the object */
 		/* remove from list */
 		idx = HASH(fp);
 		tfp = fh[idx];
-		if (tfp == fp) 
+		if (tfp == fp)
         {
 			fh[idx] = fp->f_next;
 		} 
