@@ -57,7 +57,7 @@ void job_insert(struct queue *qp, struct job *jp)
     }
     else
     {
-        qp->q_tail = jp;	/* list was empty */
+        qp->q_tail = jp;    /* list was empty */
     }
 	qp->q_head = jp;
 
