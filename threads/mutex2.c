@@ -79,11 +79,15 @@ void foo_rele(struct foo *fp) /* release a reference to the object */
 
 	pthread_mutex_lock(&fp->f_lock);
 	if (fp->f_count == 1) 
-    { /* last reference */
+    { 
+        /* last reference */
+        /*先对结构互斥量解锁，才能获取散列表锁，再重新获取互斥量*/
 		pthread_mutex_unlock(&fp->f_lock);
 		pthread_mutex_lock(&hashlock);
 		pthread_mutex_lock(&fp->f_lock);
+
 		/* need to recheck the condition */
+        /*从上次获取互斥量以来，可能处于被阻塞状态，需要重新检查释放结构条件*/
 		if (fp->f_count != 1) 
         {
 			fp->f_count--;
@@ -91,6 +95,7 @@ void foo_rele(struct foo *fp) /* release a reference to the object */
 			pthread_mutex_unlock(&hashlock);
 			return;
 		}
+
 		/* remove from list */
 		idx = HASH(fp);
 		tfp = fh[idx];
@@ -119,5 +124,6 @@ void foo_rele(struct foo *fp) /* release a reference to the object */
 	}
 }
 /*
-1.当同时需要2个互斥量时，总是让它们以相同的顺序加锁，以避免死锁
+1.当同时需要2个互斥量时，总是让它们以相同的顺序加锁，以避免死锁；
+2.加、解锁复杂，需重新审视设计；
 */
