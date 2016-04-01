@@ -4,6 +4,8 @@
 #include <string.h>
 #include "apue.h"
 
+/*∵所有调用getenv的线程返回的字符串都存放在同一静态缓冲区中，
+∴不可重入*/
 static char envbuf[ARG_MAX];
 
 extern char **environ;
