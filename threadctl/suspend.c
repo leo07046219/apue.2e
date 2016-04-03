@@ -46,6 +46,9 @@ int main(void)
 	sigset_t	oldmask;
 	pthread_t	tid;
 
+    /*主线程开始时阻塞SIGINT、SIGQUIT,子线程继承主线程信号屏蔽字，
+    sigwait会解除信号的阻塞状态，
+    ∴只有一个线程可以用于信号的接收，主线程不必担心来自上述信号的中断*/
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGINT);
 	sigaddset(&mask, SIGQUIT);
@@ -54,6 +57,7 @@ int main(void)
         err_exit(err, "SIG_BLOCK error");
     }
 
+    /*起线程处理信号*/
 	err = pthread_create(&tid, NULL, thr_fn, 0);
     if (err != 0)
     {
@@ -78,3 +82,9 @@ int main(void)
 
 	exit(0);
 }
+/*
+linux线程
+以独立进程实现，使用clone共享资源。
+异步信号发送到特定线程时，系统不能选择当前没有阻塞该信号的线程，
+线程可能不会注意到该信号。若信号产生于终端驱动程序，这样的信号通知到进程组，可以正常工作；
+若试图用kill把信号发送给进程，linux就不能如预期。*/
