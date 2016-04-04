@@ -103,5 +103,8 @@ int main(int argc, char *argv[])
 	 * Proceed with the rest of the daemon.
 	 */
 	/* ... */
+
 	exit(0);
 }
+/*利用sigwait和多线程，实现重读配置文件
+linux应用受限*/
