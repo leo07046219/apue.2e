@@ -24,3 +24,5 @@ pid_t lock_test(int fd, int type, off_t offset, int whence, off_t len)
 
 	return(lock.l_pid);	/* true, return pid of lock owner */
 }
+/*进程不能使用locktest测试它自己是否在文件的某一部分持有一把锁，
+∵调用进程总是用新锁替换旧锁，绝不会阻塞在自己持有的锁上*/
