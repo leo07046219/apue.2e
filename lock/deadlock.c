@@ -37,15 +37,17 @@ int main(void)
     {
 		err_sys("fork error");
 	} 
-    else if (pid == 0) 
-    {			/* child */
+    else if (0 == pid) 
+    {			
+        /* child */
 		lockabyte("child", fd, 0);
 		TELL_PARENT(getppid());
 		WAIT_PARENT();
 		lockabyte("child", fd, 1);
 	} 
     else 
-    {						/* parent */
+    {						
+        /* parent */
 		lockabyte("parent", fd, 1);
 		TELL_CHILD(pid);
 		WAIT_CHILD();
@@ -54,3 +56,12 @@ int main(void)
 
 	exit(0);
 }
+/*
+apue.2e/lock$ ./deadlock
+parent: got the lock, byte 1
+child: got the lock, byte 0
+child: writew_lock error: Resource deadlock avoided
+parent: got the lock, byte 0
+
+内核可以检测到死锁。？
+*/
