@@ -5,5 +5,6 @@
 
 int isastream(int fd)
 {
-	return(ioctl(fd, I_CANPUT, 0) != -1);
+    /*使用I_CANPUT ioctol来测试第三个参数说明的优先级波段是否可写*/
+    return(ioctl(fd, I_CANPUT, 0) != -1);
 }
