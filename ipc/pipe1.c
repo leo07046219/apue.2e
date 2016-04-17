@@ -38,6 +38,6 @@ int main(void)
 	exit(0);
 }
 /*
-1.fd[0]--read,fd[1]--write
-
+1.fd[0]--read,fd[1]--write；
+2.直接对管道描述符read/write，更好的方法是将管道描述符复制为标准输入、输出；
 */
