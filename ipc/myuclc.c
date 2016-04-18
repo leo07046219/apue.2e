@@ -17,7 +17,7 @@ int main(void)
         {
             err_sys("output error");
         }
-        if (c == '\n')
+        if ('\n' == c)
         {
             fflush(stdout);
         }
