@@ -144,5 +144,6 @@ int pclose(FILE *fp)
 	return(stat);       /* return child's termination status */
 }
 /*
-1.popen决不应由设置用户ID或设置组ID程序调用，可以非法提升权限
+1.popen决不应由设置用户ID或设置组ID程序调用，可以非法提升权限；
+2.popen特别适用于构造简单的过滤器程序，变化运行命令的输入或输出。但命令希望构造它自己的管线时，就是此情形；
 */
