@@ -9,7 +9,7 @@
 
 static int update(long *ptr)
 {
-	return((*ptr)++);	            /* return value before increment */
+	return((*ptr)++);	            /* return VALUE before increment */
 }
 
 int main(void)
@@ -30,7 +30,7 @@ int main(void)
 		err_sys("mmap error");
     }
 
-	close(fd);		                /* can close /dev/zero now that it's mapped */
+	close(fd);		                /* can close /dev/zero now that it's mapped 一旦映射成功即可关闭zero*/
 
 	TELL_WAIT();
 
@@ -69,3 +69,15 @@ int main(void)
 
 	exit(0);
 }
+/*
+1./dev/zero 0字节的无线资源，接收写向它的任何数据，但又忽略这些数据；
+
+2.对此设备作为ipc，∵zero具有一些特殊的性质：
+2.1.创建一个未名存储区，其长度是mmap的第二个参数，将其向上取整为系统的最近页长；
+2.2.存储区都初始化为0；
+2.3.如果多个进程的共同祖先进程对mmap指定了MAP_SHARED的标志，则这些进程可共享此存储区；
+
+3.使用zero的
+优点：在调用mmap创建营社区之前，无需存在一个实际文件；
+缺点：只在相关进程间起作用
+*/
