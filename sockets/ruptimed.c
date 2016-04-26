@@ -1,4 +1,4 @@
-/*16-5 提供系统uptime的服务器程序--面向连接的服务器*/
+/*16-5 提供系统uptime的服务器程序---面向连接的服务器*/
 
 #include "apue.h"
 #include <netdb.h>
