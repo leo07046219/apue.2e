@@ -29,9 +29,9 @@ int main(void)
 		err_sys("fork error");
 	} 
     else if (pid > 0) 
-    {							
+    {
         /* parent */
-		close(fd[1]);
+		close(fd[1]);           /*父进程用fd[0]读写*/
 
 		while (fgets(line, MAXLINE, stdin) != NULL) 
         {
@@ -70,7 +70,7 @@ int main(void)
     else 
     {
         /* child */
-        close(fd[0]);
+        close(fd[0]);           /*子进程用fd[1]读写*/
 
         if (fd[1] != STDIN_FILENO && \
             dup2(fd[1], STDIN_FILENO) != STDIN_FILENO)
@@ -98,3 +98,4 @@ static void sig_pipe(int signo)
 	printf("SIGPIPE caught\n");
 	exit(1);
 }
+/*仅利用了STREAM的全双工特性*/
