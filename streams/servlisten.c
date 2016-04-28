@@ -60,4 +60,5 @@ int serv_listen(const char *name)
 /*
 1.CONNLD模块保证管道连接的唯一性(？)；
 2.通过一个众所周知的名字，建立一个侦听管道，返回管道的读取端；
+
 */
