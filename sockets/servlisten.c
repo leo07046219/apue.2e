@@ -11,10 +11,12 @@
  * Create a server endpoint of a connection.
  * Returns fd if all OK, <0 on error.
  */
-int serv_listen(const char *name)
+int serv_listen(const char *pName)
 {
 	int                 fd = 0, len = 0, err = 0, rval = 0;
 	struct sockaddr_un  un;
+
+    assert(pName != NULL);
 
     memset((char *)&un, 0, sizeof(un));
 
@@ -24,15 +26,15 @@ int serv_listen(const char *name)
         return(-1);
     }
 
-	unlink(name);	                    /* in case it already exists */
+	unlink(pName);	                    /* in case it already exists */
 
 	/* fill in socket address structure */
 	memset(&un, 0, sizeof(un));
 	un.sun_family = AF_UNIX;
-	strcpy(un.sun_path, name);
-	len = offsetof(struct sockaddr_un, sun_path) + strlen(name);
+	strcpy(un.sun_path, pName);
+	len = offsetof(struct sockaddr_un, sun_path) + strlen(pName);
 
-	/* bind the name to the descriptor */
+	/* bind the pName to the descriptor */
 	if (bind(fd, (struct sockaddr *)&un, len) < 0) 
     {
 		rval = -2;
