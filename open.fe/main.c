@@ -1,13 +1,16 @@
+/*17-19 客户进程main函数版本1*/
+
 #include	"open.h"
 #include	<fcntl.h>
 
 #define	BUFFSIZE	8192
 
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	int		n, fd;
 	char	buf[BUFFSIZE], line[MAXLINE];
+
+    memset(());
 
 	/* read filename to cat from stdin */
 	while (fgets(line, MAXLINE, stdin) != NULL) {
