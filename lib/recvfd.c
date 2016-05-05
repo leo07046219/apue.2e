@@ -25,9 +25,9 @@ int recv_fd(int fd, ssize_t (*userfunc)(int, const void *, size_t))
 	struct iovec	iov[1];
 	struct msghdr	msg;
     
-    memset((char *)iov, 0, sizof(iov));
-    memset((char *)buf, 0, sizof(buf));
-    memset((char *)&msg, 0, sizof(msg));
+    memset((char *)iov, 0, sizeof(iov));
+    memset((char *)buf, 0, sizeof(buf));
+    memset((char *)&msg, 0, sizeof(msg));
 
 	status = -1;
 
