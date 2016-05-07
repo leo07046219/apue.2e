@@ -21,9 +21,9 @@ int send_fd(int fd, int fd_to_send)
 	struct msghdr	msg;
 	char			buf[2];                 /* send_fd()/recv_fd() 2-byte protocol */
 
-    memset((char *)iov, 0, sizof(iov));
-    memset((char *)&msg, 0, sizof(msg));
-    memset((char *)buf, 0, sizof(buf));
+    memset((char *)iov, 0, sizeof(iov));
+    memset((char *)&msg, 0, sizeof(msg));
+    memset((char *)buf, 0, sizeof(buf));
 
 	iov[0].iov_base = buf;
 	iov[0].iov_len  = 2;
