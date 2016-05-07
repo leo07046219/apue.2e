@@ -5,11 +5,12 @@ char	errmsg[MAXLINE];
 int		oflag;
 char	*pathname;
 
-int
-main(void)
+int main(void)
 {
-	int		nread;
-	char	    buf[MAXLINE];
+	int		nread = 0;
+	char    buf[MAXLINE];
+
+    memset((char *)buf, 0, sizeof(buf));
 
 	for ( ; ; ) 
     {   
@@ -18,11 +19,13 @@ main(void)
         {
             err_sys("read error on stream pipe");
         }           
-        else if (nread == 0)
+        else if (0 == nread)
         {
             break;      /* client has closed the stream pipe */
         }
+
         request(buf, nread, STDOUT_FILENO);
 	}
+
 	exit(0);
 }
