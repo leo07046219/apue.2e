@@ -46,7 +46,7 @@ int csopen(char *name, int oflag)
                 err_sys("dup2 error to stdout");
             }
 
-            if (execl("./opend", "opend", (char *)0) < 0)
+            if (execl("../opend.fe/opend", "opend", (char *)0) < 0)
             {
                 err_sys("execl error");
             }
