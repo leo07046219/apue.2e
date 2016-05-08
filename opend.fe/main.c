@@ -29,3 +29,13 @@ int main(void)
 
 	exit(0);
 }
+/* 
+入口参数有问题：
+
+usage: <pathname> <oflag>
+open /mnt/hgfs/win10Folder/apue.2e/open.fe/bufName 777
+usage: <pathname> <oflag>
+
+usage: <pathname> <oflag>
+
+*/
