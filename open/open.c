@@ -1,4 +1,4 @@
-/*17-26 csopen函数第二版*/
+/*17-26 csopen函数第二版--以守护进程的方式运行open服务器，一个服务器处理所有客户端进程的请求*/
 
 #include	"open.h"
 #include	<sys/uio.h>		/* struct iovec */
@@ -14,9 +14,13 @@ int csopen(char *name, int oflag)
 	struct iovec	iov[3];
 	static int		csfd = -1;
 
-	if (csfd < 0) {		/* open connection to conn server */
-		if ((csfd = cli_conn(CS_OPEN)) < 0)
-			err_sys("cli_conn error");
+	if (csfd < 0) 
+    {		
+        /* open connection to conn server 和17-20的fork&exec不同*/
+        if ((csfd = cli_conn(CS_OPEN)) < 0)
+        {
+            err_sys("cli_conn error");
+        }
 	}
 
 	sprintf(buf, " %d", oflag);		/* oflag to ascii */
@@ -27,8 +31,11 @@ int csopen(char *name, int oflag)
 	iov[2].iov_base = buf;
 	iov[2].iov_len  = strlen(buf) + 1;	/* null always sent */
 	len = iov[0].iov_len + iov[1].iov_len + iov[2].iov_len;
-	if (writev(csfd, &iov[0], 3) != len)
-		err_sys("writev error");
+
+    if (writev(csfd, &iov[0], 3) != len)
+    {
+        err_sys("writev error");
+    }
 
 	/* read back descriptor; returned errors handled by write() */
 	return(recv_fd(csfd, write));
