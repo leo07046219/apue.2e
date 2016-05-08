@@ -1,9 +1,9 @@
-/*17-24 buf_args函数，供17-23--retquest.c调用*/
+/*17-24 buf_args函数--将空格分隔的字符串形式参数分解成标准argv参数表，供17-23--retquest.c调用*/
 
 #include "apue.h"
 
-#define	MAXARGC		50	/* max number of arguments in buf */
-#define	WHITE	" \t\n"	/* white space for tokenizing arguments */
+#define	MAXARGC		50	        /* max number of arguments in buf */
+#define	WHITE	    " \t\n"     /* white space for tokenizing arguments */
 
 /*
  * buf[] contains white-space-separated arguments.  We convert it to an
@@ -12,20 +12,29 @@
  * else we return whatever optfunc() returns.  Note that user's buf[]
  * array is modified (nulls placed after each token).
  */
-int
-buf_args(char *buf, int (*optfunc)(int, char **))
+int buf_args(char *buf, int (*optfunc)(int, char **))
 {
-	char	*ptr, *argv[MAXARGC];
+	char	*ptr = NULL, *argv[MAXARGC];
 	int		argc;
 
-	if (strtok(buf, WHITE) == NULL)		/* an argv[0] is required */
-		return(-1);
+    memset((char *)argv, 0, sizeof(argv));
+
+    /*分隔字符串函数*/
+    if (strtok(buf, WHITE) == NULL)		/* an argv[0] is required */
+    {
+        return(-1);
+    }
+
 	argv[argc = 0] = buf;
-	while ((ptr = strtok(NULL, WHITE)) != NULL) {
-		if (++argc >= MAXARGC-1)	/* -1 for room for NULL at end */
-			return(-1);
+	while ((ptr = strtok(NULL, WHITE)) != NULL) 
+    {
+        if (++argc >= MAXARGC - 1)	/* -1 for room for NULL at end */
+        {
+            return(-1);
+        }
 		argv[argc] = ptr;
 	}
+
 	argv[++argc] = NULL;
 
 	/*
