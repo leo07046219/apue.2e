@@ -1,0 +1,28 @@
+/*17-27 open.h头文件版本2*/
+
+#include "apue.h"
+#include <errno.h>
+
+#define	CS_OPEN "/home/sar/opend"   /* well-known name */
+#define	CL_OPEN "open"              /* client's request for server */
+
+extern int	 debug;                 /* nonzero if interactive (not daemon) */
+extern char	 errmsg[];              /* error message string to return to client */
+extern int	 oflag;                 /* open flag: O_xxx ... */
+extern char	*pathname;              /* of file to open for client */
+
+/* one Client struct per connected client */
+typedef struct 
+{	
+    int     fd;                     /* fd, or -1 if available */
+    uid_t   uid;
+}Client;
+
+extern Client   *client;            /* ptr to malloc'ed array 保存每个客户进程的连接状态*/
+extern int      client_size;        /* # entries in client[] array */
+
+int		 cli_args(int, char **);
+int		 client_add(int, uid_t);
+void	 client_del(int);
+void	 loop(void);
+void	 request(char *, int, int, uid_t);
