@@ -1,4 +1,4 @@
-/*17-29 服务器进程main函数版本2*/
+/*17-29 服务器进程main函数版本2,*/
 
 #include	"opend.h"
 #include	<syslog.h>
@@ -33,5 +33,6 @@ int main(int argc, char *argv[])
         daemonize("opend");
     }
 
+    /*17-30.loop.select.c, 17-31.loop.poll.c*/
 	loop();             /* never returns */
 }
