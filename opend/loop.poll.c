@@ -64,14 +64,14 @@ void loop(void)
                 continue;
             }
 
-			if (pollfd[i].revents & POLLHUP)        //客户进程终止
+			if (pollfd[i].revents & POLLHUP)        /*客户进程终止*/
             {
                 /*服务器进程从客户进程接收到挂起消息，关闭与客户进程连接，
                 放弃仍在流上的所有数据。因为不能回送任何响应，也就没有理由
                 再去处理仍在流上的任何请求。*/
 				goto hungup;
 			} 
-            else if (pollfd[i].revents & POLLIN)    //来自现存客户进程的新请求
+            else if (pollfd[i].revents & POLLIN)    /*来自现存客户进程的新请求*/
             {
 				/* read argument buffer from client */
 				if ((nread = read(clifd, buf, MAXLINE)) < 0) 
