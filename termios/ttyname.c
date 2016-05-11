@@ -1,4 +1,4 @@
-/*18-6 POSIX.1 ttyname函数实现 */
+/*18-6 POSIX.1 ttyname函数实现--通过tty设备的fd获取ttyName*/
 
 #include	<sys/stat.h>
 #include	<dirent.h>
