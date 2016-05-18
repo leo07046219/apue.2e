@@ -46,6 +46,7 @@ pid_t pty_fork(int *ptrfdm, char *slave_name, int slave_namesz, \
 
 		/*
 		 * System V acquires controlling terminal on open().
+         Linux和Solaris中ptys_open时，从设备成为新会话的控制终端
 		 */
         if ((fds = ptys_open(pts_name)) < 0)
         {
@@ -82,6 +83,8 @@ pid_t pty_fork(int *ptrfdm, char *slave_name, int slave_namesz, \
 
 		/*
 		 * Slave becomes stdin/stdout/stderr of child.
+         复制从设备文件描述符到子进程的标准输入、出，出错，
+         不团子进程以后调用exec执行何种进程，都具有同PTY从设备联系起来的3个描述符
 		 */
         if (dup2(fds, STDIN_FILENO) != STDIN_FILENO)
         {
