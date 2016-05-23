@@ -92,7 +92,7 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 {
 	DB			*db = NULL;
 	int			len = 0, mode = 0;
-	size_t		i;
+	size_t		i = 0;
 	char		asciiptr[PTR_SZ + 1],
 				hash[(NHASH_DEF + 1) * PTR_SZ + 2];
 					/* +2 for newline and null */
@@ -102,16 +102,20 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 	 * Allocate a DB structure, and the buffers it needs.
 	 */
 	len = strlen(pathname);
-	if ((db = _db_alloc(len)) == NULL)
-		err_dump("db_open: _db_alloc error for DB");
+    if (NULL == (db = _db_alloc(len)))
+    {
+        err_dump("db_open: _db_alloc error for DB");
+    }
 
 	db->nhash   = NHASH_DEF;/* hash table size */
 	db->hashoff = HASH_OFF;	/* offset in index file of hash table */
+    /*TODO: name内存在哪里创建的？*/
 	strcpy(db->name, pathname);
 	strcat(db->name, ".idx");
 
 	if (oflag & O_CREAT) 
     {
+        /*可变参数机制，如果是创建，则会传入mode，读取之*/
 		va_list ap;
 
 		va_start(ap, oflag);
@@ -148,30 +152,42 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 		 * it.  Write lock the entire file so that we can stat
 		 * it, check its size, and initialize it, atomically.
 		 */
-		if (writew_lock(db->idxfd, 0, SEEK_SET, 0) < 0)
-			err_dump("db_open: writew_lock error");
+        if (writew_lock(db->idxfd, 0, SEEK_SET, 0) < 0)
+        {
+            err_dump("db_open: writew_lock error");
+        }
 
-		if (fstat(db->idxfd, &statbuff) < 0)
-			err_sys("db_open: fstat error");
+        if (fstat(db->idxfd, &statbuff) < 0)
+        {
+            err_sys("db_open: fstat error");
+        }
 
-		if (statbuff.st_size == 0) 
+		if (0 == statbuff.st_size) 
         {
 			/*
 			 * We have to build a list of (NHASH_DEF + 1) chain
 			 * ptrs with a value of 0.  The +1 is for the free
 			 * list pointer that precedes the hash table.
 			 */
+            /*%*d 用*填充？*/
 			sprintf(asciiptr, "%*d", PTR_SZ, 0);
 			hash[0] = 0;
-			for (i = 0; i < NHASH_DEF + 1; i++)
-				strcat(hash, asciiptr);
+            for (i = 0; i < NHASH_DEF + 1; i++)
+            {
+                strcat(hash, asciiptr);
+            }
 			strcat(hash, "\n");
 			i = strlen(hash);
-			if (write(db->idxfd, hash, i) != i)
-				err_dump("db_open: index file init write error");
+            if (write(db->idxfd, hash, i) != i)
+            {
+                err_dump("db_open: index file init write error");
+            }
 		}
-		if (un_lock(db->idxfd, 0, SEEK_SET, 0) < 0)
-			err_dump("db_open: un_lock error");
+
+        if (un_lock(db->idxfd, 0, SEEK_SET, 0) < 0)
+        {
+            err_dump("db_open: un_lock error");
+        }
 	}
 	db_rewind(db);
 	return(db);
@@ -822,9 +838,9 @@ _db_findfree(DB *db, int keylen, int datlen)
  * Rewind the index file for db_nextrec.
  * Automatically called by db_open.
  * Must be called before first db_nextrec.
+ 倒带，转回，回收数据库资源
  */
-void
-db_rewind(DBHANDLE h)
+void db_rewind(DBHANDLE h)
 {
 	DB		*db = h;
 	off_t	offset;
@@ -836,8 +852,10 @@ db_rewind(DBHANDLE h)
 	 * to the start of the index records; no need to lock.
 	 * +1 below for newline at end of hash table.
 	 */
-	if ((db->idxoff = lseek(db->idxfd, offset+1, SEEK_SET)) == -1)
-		err_dump("db_rewind: lseek error");
+    if ((db->idxoff = lseek(db->idxfd, offset + 1, SEEK_SET)) == -1)
+    {
+        err_dump("db_rewind: lseek error");
+    }
 }
 
 /*
