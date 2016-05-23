@@ -32,8 +32,10 @@ typedef unsigned long	COUNT;	/* unsigned counter */
 
 /*
  * Library's private representation of the database.
+ 记录一个打开数据库的所有信息
  */
-typedef struct {
+typedef struct 
+{
   int    idxfd;  /* fd for index file */
   int    datfd;  /* fd for data file */
   char  *idxbuf; /* malloc'ed buffer for index record */
@@ -52,6 +54,8 @@ typedef struct {
   off_t  chainoff; /* offset of hash chain for this index record */
   off_t  hashoff;  /* offset in index file of hash table */
   DBHASH nhash;    /* current hash table size */
+
+  /*操作成功与否计数--用于分析数据库性能*/
   COUNT  cnt_delok;    /* delete OK */
   COUNT  cnt_delerr;   /* delete error */
   COUNT  cnt_fetchok;  /* fetch OK */
@@ -66,6 +70,7 @@ typedef struct {
 
 /*
  * Internal functions.
+ 私有函数，"_db"打头
  */
 static DB     *_db_alloc(int);
 static void    _db_dodelete(DB *);
@@ -83,11 +88,10 @@ static void    _db_writeptr(DB *, off_t, off_t);
 /*
  * Open or create a database.  Same arguments as open(2).
  */
-DBHANDLE
-db_open(const char *pathname, int oflag, ...)
+DBHANDLE db_open(const char *pathname, int oflag, ...)
 {
-	DB			*db;
-	int			len, mode;
+	DB			*db = NULL;
+	int			len = 0, mode = 0;
 	size_t		i;
 	char		asciiptr[PTR_SZ + 1],
 				hash[(NHASH_DEF + 1) * PTR_SZ + 2];
@@ -106,7 +110,8 @@ db_open(const char *pathname, int oflag, ...)
 	strcpy(db->name, pathname);
 	strcat(db->name, ".idx");
 
-	if (oflag & O_CREAT) {
+	if (oflag & O_CREAT) 
+    {
 		va_list ap;
 
 		va_start(ap, oflag);
@@ -119,7 +124,9 @@ db_open(const char *pathname, int oflag, ...)
 		db->idxfd = open(db->name, oflag, mode);
 		strcpy(db->name + len, ".dat");
 		db->datfd = open(db->name, oflag, mode);
-	} else {
+	} 
+    else 
+    {
 		/*
 		 * Open index file and data file.
 		 */
@@ -128,12 +135,14 @@ db_open(const char *pathname, int oflag, ...)
 		db->datfd = open(db->name, oflag);
 	}
 
-	if (db->idxfd < 0 || db->datfd < 0) {
+	if (db->idxfd < 0 || db->datfd < 0) 
+    {
 		_db_free(db);
 		return(NULL);
 	}
 
-	if ((oflag & (O_CREAT | O_TRUNC)) == (O_CREAT | O_TRUNC)) {
+	if ((oflag & (O_CREAT | O_TRUNC)) == (O_CREAT | O_TRUNC)) 
+    {
 		/*
 		 * If the database was created, we have to initialize
 		 * it.  Write lock the entire file so that we can stat
@@ -145,7 +154,8 @@ db_open(const char *pathname, int oflag, ...)
 		if (fstat(db->idxfd, &statbuff) < 0)
 			err_sys("db_open: fstat error");
 
-		if (statbuff.st_size == 0) {
+		if (statbuff.st_size == 0) 
+        {
 			/*
 			 * We have to build a list of (NHASH_DEF + 1) chain
 			 * ptrs with a value of 0.  The +1 is for the free
@@ -877,3 +887,7 @@ doreturn:
 		err_dump("db_nextrec: un_lock error");
 	return(ptr);
 }
+/*
+1.为简化起见，将所有函数都放在一个文件中，这样处理的有点是，只要将私有函数声明为static，就可对外将其隐藏起来；
+2.
+*/
