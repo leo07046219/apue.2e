@@ -139,18 +139,21 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 		db->datfd = open(db->name, oflag);
 	}
 
+    /*打开、创建数据库出错--清除db并返回*/
 	if (db->idxfd < 0 || db->datfd < 0) 
     {
 		_db_free(db);
 		return(NULL);
 	}
 
+    /*创建数据库，必须加锁*/
 	if ((oflag & (O_CREAT | O_TRUNC)) == (O_CREAT | O_TRUNC)) 
     {
 		/*
 		 * If the database was created, we have to initialize
 		 * it.  Write lock the entire file so that we can stat
 		 * it, check its size, and initialize it, atomically.
+         操作索引文件前先加锁
 		 */
         if (writew_lock(db->idxfd, 0, SEEK_SET, 0) < 0)
         {
@@ -162,6 +165,8 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
             err_sys("db_open: fstat error");
         }
 
+        /*若索引文件长度为0，则该文件刚刚被创建，
+        需要初始化它所包含的空闲链表和散列链表指针*/
 		if (0 == statbuff.st_size) 
         {
 			/*
@@ -169,13 +174,14 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 			 * ptrs with a value of 0.  The +1 is for the free
 			 * list pointer that precedes the hash table.
 			 */
-            /*%*d 用*填充？*/
+            /*%*d 将数据库指针从整形转化为字符串*/
 			sprintf(asciiptr, "%*d", PTR_SZ, 0);
 			hash[0] = 0;
             for (i = 0; i < NHASH_DEF + 1; i++)
             {
                 strcat(hash, asciiptr);
             }
+            /*构造散列表，并写入索引文件*/
 			strcat(hash, "\n");
 			i = strlen(hash);
             if (write(db->idxfd, hash, i) != i)
@@ -189,7 +195,10 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
             err_dump("db_open: un_lock error");
         }
 	}
+
+    /*清除数据库文件指针*/
 	db_rewind(db);
+
 	return(db);
 }
 
@@ -199,7 +208,7 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 static DB *
 _db_alloc(int namelen)
 {
-	DB		*db;
+	DB		*db = NULL;
 
 	/*
 	 * Use calloc, to initialize the structure to zero.
