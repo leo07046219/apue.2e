@@ -397,16 +397,24 @@ static DBHASH _db_hash(DB *db, const char *key)
  * Read a chain ptr field from anywhere in the index file:
  * the free list pointer, a hash table chain ptr, or an
  * index record chain ptr.
+ 未加锁，调用者需要执行加锁保护
  */
-static off_t
-_db_readptr(DB *db, off_t offset)
+static off_t _db_readptr(DB *db, off_t offset)
 {
 	char	asciiptr[PTR_SZ + 1];
 
-	if (lseek(db->idxfd, offset, SEEK_SET) == -1)
-		err_dump("_db_readptr: lseek error to ptr field");
-	if (read(db->idxfd, asciiptr, PTR_SZ) != PTR_SZ)
-		err_dump("_db_readptr: read error of ptr field");
+    memset(asciiptr, 0, sizeof(asciiptr));
+
+    if (lseek(db->idxfd, offset, SEEK_SET) == -1)
+    {
+        err_dump("_db_readptr: lseek error to ptr field");
+    }
+
+    if (read(db->idxfd, asciiptr, PTR_SZ) != PTR_SZ)
+    {
+        err_dump("_db_readptr: read error of ptr field");
+    }
+
 	asciiptr[PTR_SZ] = 0;		/* null terminate */
 	return(atol(asciiptr));
 }
@@ -418,22 +426,27 @@ _db_readptr(DB *db, off_t offset)
  * set db->datoff and db->datlen to the offset and length of the
  * corresponding data record in the data file.
  */
-static off_t
-_db_readidx(DB *db, off_t offset)
+static off_t _db_readidx(DB *db, off_t offset)
 {
-	ssize_t				i;
-	char			*ptr1, *ptr2;
+	ssize_t				i = 0;
+	char			*ptr1 = NULL, *ptr2 = NULL;
 	char			asciiptr[PTR_SZ + 1], asciilen[IDXLEN_SZ + 1];
 	struct iovec	iov[2];
+
+    memset(asciiptr, 0, sizeof(asciiptr));
+    memset(asciilen, 0, sizeof(asciilen));
+    memset(iov, 0, sizeof(iov));
 
 	/*
 	 * Position index file and record the offset.  db_nextrec
 	 * calls us with offset==0, meaning read from current offset.
 	 * We still need to call lseek to record the current offset.
 	 */
-	if ((db->idxoff = lseek(db->idxfd, offset,
-	  offset == 0 ? SEEK_CUR : SEEK_SET)) == -1)
-		err_dump("_db_readidx: lseek error");
+    if ((db->idxoff = lseek(db->idxfd, offset, \
+        offset == 0 ? SEEK_CUR : SEEK_SET)) == -1)
+    {
+        err_dump("_db_readidx: lseek error");
+    }
 
 	/*
 	 * Read the ascii chain ptr and the ascii length at
@@ -444,9 +457,11 @@ _db_readidx(DB *db, off_t offset)
 	iov[0].iov_len  = PTR_SZ;
 	iov[1].iov_base = asciilen;
 	iov[1].iov_len  = IDXLEN_SZ;
-	if ((i = readv(db->idxfd, &iov[0], 2)) != PTR_SZ + IDXLEN_SZ) {
+	if ((i = readv(db->idxfd, &iov[0], 2)) != PTR_SZ + IDXLEN_SZ) 
+    {
 		if (i == 0 && offset == 0)
 			return(-1);		/* EOF for db_nextrec */
+
 		err_dump("_db_readidx: readv error of index record");
 	}
 
