@@ -205,41 +205,48 @@ DBHANDLE db_open(const char *pathname, int oflag, ...)
 /*
  * Allocate & initialize a DB structure and its buffers.
  */
-static DB *
-_db_alloc(int namelen)
+static DB *_db_alloc(int namelen)
 {
 	DB		*db = NULL;
 
 	/*
 	 * Use calloc, to initialize the structure to zero.
 	 */
-	if ((db = calloc(1, sizeof(DB))) == NULL)
-		err_dump("_db_alloc: calloc error for DB");
+    if (NULL == (db = calloc(1, sizeof(DB))))
+    {
+        err_dump("_db_alloc: calloc error for DB");
+    }
+
 	db->idxfd = db->datfd = -1;				/* descriptors */
 
 	/*
 	 * Allocate room for the name.
 	 * +5 for ".idx" or ".dat" plus null at end.
 	 */
-	if ((db->name = malloc(namelen + 5)) == NULL)
-		err_dump("_db_alloc: malloc error for name");
+    if (NULL == (db->name = malloc(namelen + 5)))
+    {
+        err_dump("_db_alloc: malloc error for name");
+    }
 
 	/*
 	 * Allocate an index buffer and a data buffer.
 	 * +2 for newline and null at end.
 	 */
-	if ((db->idxbuf = malloc(IDXLEN_MAX + 2)) == NULL)
-		err_dump("_db_alloc: malloc error for index buffer");
-	if ((db->datbuf = malloc(DATLEN_MAX + 2)) == NULL)
-		err_dump("_db_alloc: malloc error for data buffer");
+    if (NULL == (db->idxbuf = malloc(IDXLEN_MAX + 2)))
+    {
+        err_dump("_db_alloc: malloc error for index buffer");
+    }
+    if (NULL == (db->datbuf = malloc(DATLEN_MAX + 2)))
+    {
+        err_dump("_db_alloc: malloc error for data buffer");
+    }
 	return(db);
 }
 
 /*
  * Relinquish access to the database.
  */
-void
-db_close(DBHANDLE h)
+void db_close(DBHANDLE h)
 {
 	_db_free((DB *)h);	/* closes fds, free buffers & struct */
 }
@@ -248,35 +255,49 @@ db_close(DBHANDLE h)
  * Free up a DB structure, and all the malloc'ed buffers it
  * may point to.  Also close the file descriptors if still open.
  */
-static void
-_db_free(DB *db)
+static void _db_free(DB *pDB)
 {
-	if (db->idxfd >= 0)
-		close(db->idxfd);
-	if (db->datfd >= 0)
-		close(db->datfd);
-	if (db->idxbuf != NULL)
-		free(db->idxbuf);
-	if (db->datbuf != NULL)
-		free(db->datbuf);
-	if (db->name != NULL)
-		free(db->name);
-	free(db);
+    assert(pDB != NULL);
+
+    if (pDB->idxfd >= 0)
+    {
+        close(pDB->idxfd);
+    }
+    if (pDB->datfd >= 0)
+    {
+        close(pDB->datfd);
+    }
+    if (pDB->idxbuf != NULL)
+    {
+        free(pDB->idxbuf);
+    }
+    if (pDB->datbuf != NULL)
+    {
+        free(pDB->datbuf);
+    }
+    if (pDB->name != NULL)
+    {
+        free(pDB->name);
+    }
+
+	free(pDB);
 }
 
 /*
  * Fetch a record.  Return a pointer to the null-terminated data.
  */
-char *
-db_fetch(DBHANDLE h, const char *key)
+char *db_fetch(DBHANDLE h, const char *key)
 {
 	DB      *db = h;
-	char	*ptr;
+	char	*ptr = NULL;
 
-	if (_db_find_and_lock(db, key, 0) < 0) {
+	if (_db_find_and_lock(db, key, 0) < 0) 
+    {
 		ptr = NULL;				/* error, record not found */
 		db->cnt_fetcherr++;
-	} else {
+	} 
+    else 
+    {
 		ptr = _db_readdat(db);	/* return pointer to data */
 		db->cnt_fetchok++;
 	}
@@ -284,17 +305,20 @@ db_fetch(DBHANDLE h, const char *key)
 	/*
 	 * Unlock the hash chain that _db_find_and_lock locked.
 	 */
-	if (un_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
-		err_dump("db_fetch: un_lock error");
+    if (un_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
+    {
+        err_dump("db_fetch: un_lock error");
+    }
+
 	return(ptr);
 }
 
 /*
  * Find the specified record.  Called by db_delete, db_fetch,
  * and db_store.  Returns with the hash chain locked.
+ 按给定的键查找记录
  */
-static int
-_db_find_and_lock(DB *db, const char *key, int writelock)
+static int _db_find_and_lock(DB *db, const char *key, int writelock)
 {
 	off_t	offset, nextoffset;
 
@@ -303,6 +327,7 @@ _db_find_and_lock(DB *db, const char *key, int writelock)
 	 * byte offset of corresponding chain ptr in hash table.
 	 * This is where our search starts.  First we calculate the
 	 * offset in the hash table for this key.
+     将键变换为散列值，用其计算在文件中相应散列链的起始地址
 	 */
 	db->chainoff = (_db_hash(db, key) * PTR_SZ) + db->hashoff;
 	db->ptroff = db->chainoff;
@@ -310,24 +335,36 @@ _db_find_and_lock(DB *db, const char *key, int writelock)
 	/*
 	 * We lock the hash chain here.  The caller must unlock it
 	 * when done.  Note we lock and unlock only the first byte.
+     只锁该散列链开始处的第一个字节，允许多个进程同时搜索不同散列链
 	 */
-	if (writelock) {
-		if (writew_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
-			err_dump("_db_find_and_lock: writew_lock error");
-	} else {
-		if (readw_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
-			err_dump("_db_find_and_lock: readw_lock error");
+	if (writelock) 
+    {
+        if (writew_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
+        {
+            err_dump("_db_find_and_lock: writew_lock error");
+        }
+	} 
+    else 
+    {
+        if (readw_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
+        {
+            err_dump("_db_find_and_lock: readw_lock error");
+        }
 	}
 
 	/*
 	 * Get the offset in the index file of first record
 	 * on the hash chain (can be 0).
+     从散列链中的第一个指针开始，循环遍历该散列链，查找相同键值
 	 */
 	offset = _db_readptr(db, db->ptroff);
-	while (offset != 0) {
+	while (offset != 0) 
+    {
 		nextoffset = _db_readidx(db, offset);
-		if (strcmp(db->idxbuf, key) == 0)
-			break;       /* found a match */
+        if (strcmp(db->idxbuf, key) == 0)
+        {
+            break;       /* found a match */
+        }
 		db->ptroff = offset; /* offset of this (unequal) record */
 		offset = nextoffset; /* next one to compare */
 	}
@@ -339,16 +376,20 @@ _db_find_and_lock(DB *db, const char *key, int writelock)
 
 /*
  * Calculate the hash value for a key.
+ 1.哈希算法：将键中每个ASCII字符乘以这个字符在字符串中以1开始的索引号，求和，对散列表记录项数目取余
+ 2.散列表项数位137，素数，素数散列通常提供良好的分布特性
  */
-static DBHASH
-_db_hash(DB *db, const char *key)
+static DBHASH _db_hash(DB *db, const char *key)
 {
 	DBHASH		hval = 0;
-	char		c;
-	int			i;
+	char		c = 0;
+	int			i = 0;
 
-	for (i = 1; (c = *key++) != 0; i++)
-		hval += c * i;		/* ascii char times its 1-based index */
+    for (i = 1; (c = *key++) != 0; i++)
+    {
+        hval += c * i;		/* ascii char times its 1-based index */
+    }
+
 	return(hval % db->nhash);
 }
 
