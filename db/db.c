@@ -425,6 +425,7 @@ static off_t _db_readptr(DB *db, off_t offset)
  * and replace the separators with null bytes.  If all is OK we
  * set db->datoff and db->datlen to the offset and length of the
  * corresponding data record in the data file.
+ 从索引文件的指定偏移量处读取索引记录
  */
 static off_t _db_readidx(DB *db, off_t offset)
 {
@@ -459,8 +460,10 @@ static off_t _db_readidx(DB *db, off_t offset)
 	iov[1].iov_len  = IDXLEN_SZ;
 	if ((i = readv(db->idxfd, &iov[0], 2)) != PTR_SZ + IDXLEN_SZ) 
     {
-		if (i == 0 && offset == 0)
-			return(-1);		/* EOF for db_nextrec */
+        if ((0 == i) && (0 == offset))
+        {
+            return(-1);		/* EOF for db_nextrec */
+        }
 
 		err_dump("_db_readidx: readv error of index record");
 	}
@@ -472,41 +475,57 @@ static off_t _db_readidx(DB *db, off_t offset)
 	db->ptrval = atol(asciiptr); /* offset of next key in chain */
 
 	asciilen[IDXLEN_SZ] = 0;     /* null terminate */
-	if ((db->idxlen = atoi(asciilen)) < IDXLEN_MIN ||
-	  db->idxlen > IDXLEN_MAX)
-		err_dump("_db_readidx: invalid length");
+    if ((db->idxlen = atoi(asciilen)) < IDXLEN_MIN || \
+        db->idxlen > IDXLEN_MAX)
+    {
+        err_dump("_db_readidx: invalid length");
+    }
 
 	/*
 	 * Now read the actual index record.  We read it into the key
 	 * buffer that we malloced when we opened the database.
 	 */
-	if ((i = read(db->idxfd, db->idxbuf, db->idxlen)) != db->idxlen)
-		err_dump("_db_readidx: read error of index record");
-	if (db->idxbuf[db->idxlen-1] != NEWLINE)	/* sanity check */
-		err_dump("_db_readidx: missing newline");
+    if ((i = read(db->idxfd, db->idxbuf, db->idxlen)) != db->idxlen)
+    {
+        err_dump("_db_readidx: read error of index record");
+    }
+    if (db->idxbuf[db->idxlen - 1] != NEWLINE)	/* sanity check */
+    {
+        err_dump("_db_readidx: missing newline");
+    }
 	db->idxbuf[db->idxlen-1] = 0;	 /* replace newline with null */
 
 	/*
 	 * Find the separators in the index record.
 	 */
-	if ((ptr1 = strchr(db->idxbuf, SEP)) == NULL)
-		err_dump("_db_readidx: missing first separator");
+    if (NULL == (ptr1 = strchr(db->idxbuf, SEP)))
+    {
+        err_dump("_db_readidx: missing first separator");
+    }
 	*ptr1++ = 0;				/* replace SEP with null */
 
-	if ((ptr2 = strchr(ptr1, SEP)) == NULL)
-		err_dump("_db_readidx: missing second separator");
+    if (NULL == (ptr2 = strchr(ptr1, SEP)))
+    {
+        err_dump("_db_readidx: missing second separator");
+    }
 	*ptr2++ = 0;				/* replace SEP with null */
 
-	if (strchr(ptr2, SEP) != NULL)
-		err_dump("_db_readidx: too many separators");
+    if (strchr(ptr2, SEP) != NULL)
+    {
+        err_dump("_db_readidx: too many separators");
+    }
 
 	/*
 	 * Get the starting offset and length of the data record.
 	 */
-	if ((db->datoff = atol(ptr1)) < 0)
-		err_dump("_db_readidx: starting offset < 0");
-	if ((db->datlen = atol(ptr2)) <= 0 || db->datlen > DATLEN_MAX)
-		err_dump("_db_readidx: invalid length");
+    if ((db->datoff = atol(ptr1)) < 0)
+    {
+        err_dump("_db_readidx: starting offset < 0");
+    }
+    if ((db->datlen = atol(ptr2)) <= 0 || db->datlen > DATLEN_MAX)
+    {
+        err_dump("_db_readidx: invalid length");
+    }
 	return(db->ptrval);		/* return offset of next key in chain */
 }
 
@@ -514,37 +533,51 @@ static off_t _db_readidx(DB *db, off_t offset)
  * Read the current data record into the data buffer.
  * Return a pointer to the null-terminated data buffer.
  */
-static char *
-_db_readdat(DB *db)
+static char *_db_readdat(DB *db)
 {
-	if (lseek(db->datfd, db->datoff, SEEK_SET) == -1)
-		err_dump("_db_readdat: lseek error");
-	if (read(db->datfd, db->datbuf, db->datlen) != db->datlen)
-		err_dump("_db_readdat: read error");
-	if (db->datbuf[db->datlen-1] != NEWLINE)	/* sanity check */
-		err_dump("_db_readdat: missing newline");
+    if (lseek(db->datfd, db->datoff, SEEK_SET) == -1)
+    {
+        err_dump("_db_readdat: lseek error");
+    }
+
+    if (read(db->datfd, db->datbuf, db->datlen) != db->datlen)
+    {
+        err_dump("_db_readdat: read error");
+    }
+
+    if (db->datbuf[db->datlen - 1] != NEWLINE)	/* sanity check */
+    {
+        err_dump("_db_readdat: missing newline");
+    }
+
 	db->datbuf[db->datlen-1] = 0; /* replace newline with null */
+
 	return(db->datbuf);		/* return pointer to data record */
 }
 
 /*
  * Delete the specified record.
  */
-int
-db_delete(DBHANDLE h, const char *key)
+int db_delete(DBHANDLE h, const char *key)
 {
 	DB		*db = h;
 	int		rc = 0;			/* assume record will be found */
 
-	if (_db_find_and_lock(db, key, 1) == 0) {
+	if (_db_find_and_lock(db, key, 1) == 0) 
+    {
 		_db_dodelete(db);
 		db->cnt_delok++;
-	} else {
+	} 
+    else 
+    {
 		rc = -1;			/* not found */
 		db->cnt_delerr++;
 	}
-	if (un_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
-		err_dump("db_delete: un_lock error");
+    if (un_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
+    {
+        err_dump("db_delete: un_lock error");
+    }
+
 	return(rc);
 }
 
@@ -552,29 +585,37 @@ db_delete(DBHANDLE h, const char *key)
  * Delete the current record specified by the DB structure.
  * This function is called by db_delete and db_store, after
  * the record has been located by _db_find_and_lock.
+ 主要是更写出你两个链表：空闲链表以及与键对应的散列链
  */
-static void
-_db_dodelete(DB *db)
+static void _db_dodelete(DB *db)
 {
-	int		i;
-	char	*ptr;
+	int		i = 0;
+	char	*ptr = NULL;
 	off_t	freeptr, saveptr;
 
+    assert(db != NULL);
 	/*
 	 * Set data buffer and key to all blanks.
 	 */
-	for (ptr = db->datbuf, i = 0; i < db->datlen - 1; i++)
-		*ptr++ = SPACE;
+    for (ptr = db->datbuf, i = 0; i < db->datlen - 1; i++)
+    {
+        *ptr++ = SPACE;
+    }
+
 	*ptr = 0;	/* null terminate for _db_writedat */
 	ptr = db->idxbuf;
-	while (*ptr)
-		*ptr++ = SPACE;
+    while (*ptr)
+    {
+        *ptr++ = SPACE;
+    }
 
 	/*
 	 * We have to lock the free list.
 	 */
-	if (writew_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
-		err_dump("_db_dodelete: writew_lock error");
+    if (writew_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
+    {
+        err_dump("_db_dodelete: writew_lock error");
+    }
 
 	/*
 	 * Write the data record with all blanks.
@@ -613,8 +654,11 @@ _db_dodelete(DB *db)
 	 * contents of the deleted record's chain ptr, saveptr.
 	 */
 	_db_writeptr(db, db->ptroff, saveptr);
-	if (un_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
-		err_dump("_db_dodelete: un_lock error");
+
+    if (un_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
+    {
+        err_dump("_db_dodelete: un_lock error");
+    }
 }
 
 /*
