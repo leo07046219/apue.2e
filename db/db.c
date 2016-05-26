@@ -675,7 +675,7 @@ static void _db_writedat(DB *db, const char *data, off_t offset, int whence)
 	 * If we're appending, we have to lock before doing the lseek
 	 * and write to make the two an atomic operation.  If we're
 	 * overwriting an existing record, we don't have to lock.
-     追加--无需加锁，覆盖--需要加锁
+     追加--需加锁，覆盖--无需加锁
 	 */
     if (SEEK_END == whence) /* we're appending, lock entire file */
     {
@@ -689,7 +689,7 @@ static void _db_writedat(DB *db, const char *data, off_t offset, int whence)
     {
         err_dump("_db_writedat: lseek error");
     }
-
+    /*利用writev实现的写文件同时写长度的机制*/
 	db->datlen = strlen(data) + 1;	/* datlen includes newline */
 
 	iov[0].iov_base = (char *) data;
@@ -716,61 +716,88 @@ static void _db_writedat(DB *db, const char *data, off_t offset, int whence)
  * this function to set the datoff and datlen fields in the
  * DB structure, which we need to write the index record.
  */
-static void
-_db_writeidx(DB *db, const char *key,
+static void _db_writeidx(DB *db, const char *key,
              off_t offset, int whence, off_t ptrval)
 {
 	struct iovec	iov[2];
 	char			asciiptrlen[PTR_SZ + IDXLEN_SZ +1];
-	int				len;
-	char			*fmt;
+	int				len = 0;
+	char			*fmt = NULL;
 
-	if ((db->ptrval = ptrval) < 0 || ptrval > PTR_MAX)
-		err_quit("_db_writeidx: invalid ptr: %d", ptrval);
-	if (sizeof(off_t) == sizeof(long long))
-		fmt = "%s%c%lld%c%d\n";
-	else
-		fmt = "%s%c%ld%c%d\n";
+    memset(iov, 0, sizeof(iov));
+    memset(asciiptrlen, 0, sizeof(asciiptrlen));
+
+    /*验证散列链中下一个指针有效性*/
+    if (((db->ptrval = ptrval) < 0) || (ptrval > PTR_MAX))
+    {
+        err_quit("_db_writeidx: invalid ptr: %d", ptrval);
+    }
+    /*基于off_t数据类型，选择传送给sprintf的格式字符串，
+    即使32位系统也能提供64位文件偏移量*/
+    if (sizeof(off_t) == sizeof(long long))
+    {
+        fmt = "%s%c%lld%c%d\n";
+    }
+    else
+    {
+        fmt = "%s%c%ld%c%d\n";
+    }
 	sprintf(db->idxbuf, fmt, key, SEP, db->datoff, SEP, db->datlen);
-	if ((len = strlen(db->idxbuf)) < IDXLEN_MIN || len > IDXLEN_MAX)
-		err_dump("_db_writeidx: invalid length");
+    if ((len = strlen(db->idxbuf)) < IDXLEN_MIN || len > IDXLEN_MAX)
+    {
+        err_dump("_db_writeidx: invalid length");
+    }
 	sprintf(asciiptrlen, "%*ld%*d", PTR_SZ, ptrval, IDXLEN_SZ, len);
 
 	/*
 	 * If we're appending, we have to lock before doing the lseek
 	 * and write to make the two an atomic operation.  If we're
 	 * overwriting an existing record, we don't have to lock.
+     追加--需加锁，覆盖--无需加锁
 	 */
-	if (whence == SEEK_END)		/* we're appending */
-		if (writew_lock(db->idxfd, ((db->nhash+1)*PTR_SZ)+1,
-		  SEEK_SET, 0) < 0)
-			err_dump("_db_writeidx: writew_lock error");
+    if (SEEK_END == whence)		/* we're appending */
+    {
+        if (writew_lock(db->idxfd, ((db->nhash + 1)*PTR_SZ) + 1, \
+            SEEK_SET, 0) < 0)
+        {
+            err_dump("_db_writeidx: writew_lock error");
+        }
+    }
+
 
 	/*
 	 * Position the index file and record the offset.
 	 */
-	if ((db->idxoff = lseek(db->idxfd, offset, whence)) == -1)
-		err_dump("_db_writeidx: lseek error");
+    if (-1 == (db->idxoff = lseek(db->idxfd, offset, whence)))
+    {
+        err_dump("_db_writeidx: lseek error");
+    }
 
 	iov[0].iov_base = asciiptrlen;
 	iov[0].iov_len  = PTR_SZ + IDXLEN_SZ;
 	iov[1].iov_base = db->idxbuf;
 	iov[1].iov_len  = len;
-	if (writev(db->idxfd, &iov[0], 2) != PTR_SZ + IDXLEN_SZ + len)
-		err_dump("_db_writeidx: writev error of index record");
+    if (writev(db->idxfd, &iov[0], 2) != PTR_SZ + IDXLEN_SZ + len)
+    {
+        err_dump("_db_writeidx: writev error of index record");
+    }
 
-	if (whence == SEEK_END)
-		if (un_lock(db->idxfd, ((db->nhash+1)*PTR_SZ)+1,
-		  SEEK_SET, 0) < 0)
-			err_dump("_db_writeidx: un_lock error");
+    if (SEEK_END == whence)
+    {
+        if (un_lock(db->idxfd, ((db->nhash + 1)*PTR_SZ) + 1, \
+            SEEK_SET, 0) < 0)
+        {
+            err_dump("_db_writeidx: un_lock error");
+        }
+    }
+
 }
 
 /*
  * Write a chain ptr field somewhere in the index file:
  * the free list, the hash table, or in an index record.
  */
-static void
-_db_writeptr(DB *db, off_t offset, off_t ptrval)
+static void _db_writeptr(DB *db, off_t offset, off_t ptrval)
 {
 	char	asciiptr[PTR_SZ + 1];
 
