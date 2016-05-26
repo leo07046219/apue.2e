@@ -796,41 +796,58 @@ static void _db_writeidx(DB *db, const char *key,
 /*
  * Write a chain ptr field somewhere in the index file:
  * the free list, the hash table, or in an index record.
+ 将一个链表指针写至索引文件
  */
 static void _db_writeptr(DB *db, off_t offset, off_t ptrval)
 {
 	char	asciiptr[PTR_SZ + 1];
 
-	if (ptrval < 0 || ptrval > PTR_MAX)
-		err_quit("_db_writeptr: invalid ptr: %d", ptrval);
+    memset(asciiptr, 0, sizeof(asciiptr));
+
+    /*验证该指针在索引文件边界范围内*/
+    if (ptrval < 0 || ptrval > PTR_MAX)
+    {
+        err_quit("_db_writeptr: invalid ptr: %d", ptrval);
+    }
+    /*变换成ascii字符串*/
 	sprintf(asciiptr, "%*ld", PTR_SZ, ptrval);
 
-	if (lseek(db->idxfd, offset, SEEK_SET) == -1)
-		err_dump("_db_writeptr: lseek error to ptr field");
-	if (write(db->idxfd, asciiptr, PTR_SZ) != PTR_SZ)
-		err_dump("_db_writeptr: write error of ptr field");
+    if (lseek(db->idxfd, offset, SEEK_SET) == -1)
+    {
+        err_dump("_db_writeptr: lseek error to ptr field");
+    }
+
+    if (write(db->idxfd, asciiptr, PTR_SZ) != PTR_SZ)
+    {
+        err_dump("_db_writeptr: write error of ptr field");
+    }
 }
 
 /*
  * Store a record in the database.  Return 0 if OK, 1 if record
  * exists and DB_INSERT specified, -1 on error.
+ 将一条记录加到数据库中
  */
-int
-db_store(DBHANDLE h, const char *key, const char *data, int flag)
+int db_store(DBHANDLE h, const char *key, const char *data, int flag)
 {
 	DB		*db = h;
-	int		rc, keylen, datlen;
+	int		rc = 0, keylen = 0, datlen = 0;
 	off_t	ptrval;
 
-	if (flag != DB_INSERT && flag != DB_REPLACE &&
-	  flag != DB_STORE) {
+	if ((flag != DB_INSERT) && (flag != DB_REPLACE) && \
+	  (flag != DB_STORE)) 
+    {
 		errno = EINVAL;
 		return(-1);
 	}
+
 	keylen = strlen(key);
 	datlen = strlen(data) + 1;		/* +1 for newline at end */
-	if (datlen < DATLEN_MIN || datlen > DATLEN_MAX)
-		err_dump("db_store: invalid data length");
+
+    if ((datlen < DATLEN_MIN) || (datlen > DATLEN_MAX))
+    {
+        err_dump("db_store: invalid data length");
+    }
 
 	/*
 	 * _db_find_and_lock calculates which hash table this new record
@@ -838,13 +855,17 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 	 * exists or not. The following calls to _db_writeptr change the
 	 * hash table entry for this chain to point to the new record.
 	 * The new record is added to the front of the hash chain.
+     db_store很可能会修改散列链，所以需要加锁
 	 */
-	if (_db_find_and_lock(db, key, 1) < 0) { /* record not found */
-		if (flag == DB_REPLACE) {
+	if (_db_find_and_lock(db, key, 1) < 0) 
+    { 
+        /* record not found */
+		if (DB_REPLACE == flag) 
+        {
 			rc = -1;
 			db->cnt_storerr++;
 			errno = ENOENT;		/* error, record does not exist */
-			goto doreturn;
+			goto doReturn;
 		}
 
 		/*
@@ -853,7 +874,8 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 		 */
 		ptrval = _db_readptr(db, db->chainoff);
 
-		if (_db_findfree(db, keylen, datlen) < 0) {
+		if (_db_findfree(db, keylen, datlen) < 0) 
+        {
 			/*
 			 * Can't find an empty record big enough. Append the
 			 * new record to the ends of the index and data files.
@@ -867,7 +889,9 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 			 */
 			_db_writeptr(db, db->chainoff, db->idxoff);
 			db->cnt_stor1++;
-		} else {
+		} 
+        else 
+        {
 			/*
 			 * Reuse an empty record. _db_findfree removed it from
 			 * the free list and set both db->datoff and db->idxoff.
@@ -878,11 +902,15 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 			_db_writeptr(db, db->chainoff, db->idxoff);
 			db->cnt_stor2++;
 		}
-	} else {						/* record found */
-		if (flag == DB_INSERT) {
+	} 
+    else 
+    {						
+        /* record found */
+		if (DB_INSERT == flag) 
+        {
 			rc = 1;		/* error, record already in db */
 			db->cnt_storerr++;
-			goto doreturn;
+			goto doReturn;
 		}
 
 		/*
@@ -890,8 +918,10 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 		 * key equals the existing key, but we need to check if
 		 * the data records are the same size.
 		 */
-		if (datlen != db->datlen) {
-			_db_dodelete(db);	/* delete the existing record */
+		if (datlen != db->datlen) 
+        {
+            /* delete the existing record */
+			_db_dodelete(db);	
 
 			/*
 			 * Reread the chain ptr in the hash table
@@ -910,7 +940,9 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 			 */
 			_db_writeptr(db, db->chainoff, db->idxoff);
 			db->cnt_stor3++;
-		} else {
+		} 
+        else 
+        {
 			/*
 			 * Same size data, just replace data record.
 			 */
@@ -918,11 +950,16 @@ db_store(DBHANDLE h, const char *key, const char *data, int flag)
 			db->cnt_stor4++;
 		}
 	}
+
 	rc = 0;		/* OK */
 
-doreturn:	/* unlock hash chain locked by _db_find_and_lock */
-	if (un_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
-		err_dump("db_store: un_lock error");
+doReturn:	
+    /* unlock hash chain locked by _db_find_and_lock */
+    if (un_lock(db->idxfd, db->chainoff, SEEK_SET, 1) < 0)
+    {
+        err_dump("db_store: un_lock error");
+    }
+
 	return(rc);
 }
 
@@ -930,17 +967,18 @@ doreturn:	/* unlock hash chain locked by _db_find_and_lock */
  * Try to find a free index record and accompanying data record
  * of the correct sizes.  We're only called by db_store.
  */
-static int
-_db_findfree(DB *db, int keylen, int datlen)
+static int _db_findfree(DB *db, int keylen, int datlen)
 {
-	int		rc;
+	int		rc = 0;
 	off_t	offset, nextoffset, saveoffset;
 
 	/*
 	 * Lock the free list.
 	 */
-	if (writew_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
-		err_dump("_db_findfree: writew_lock error");
+    if (writew_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
+    {
+        err_dump("_db_findfree: writew_lock error");
+    }
 
 	/*
 	 * Read the free list pointer.
@@ -948,17 +986,23 @@ _db_findfree(DB *db, int keylen, int datlen)
 	saveoffset = FREE_OFF;
 	offset = _db_readptr(db, saveoffset);
 
-	while (offset != 0) {
+	while (offset != 0) 
+    {
 		nextoffset = _db_readidx(db, offset);
-		if (strlen(db->idxbuf) == keylen && db->datlen == datlen)
-			break;		/* found a match */
+        if ((strlen(db->idxbuf) == keylen) && (db->datlen == datlen))
+        {
+            break;		/* found a match */
+        }
 		saveoffset = offset;
 		offset = nextoffset;
 	}
 
-	if (offset == 0) {
+	if (0 == offset) 
+    {
 		rc = -1;	/* no match found */
-	} else {
+	} 
+    else 
+    {
 		/*
 		 * Found a free record with matching sizes.
 		 * The index record was read in by _db_readidx above,
@@ -980,8 +1024,11 @@ _db_findfree(DB *db, int keylen, int datlen)
 	/*
 	 * Unlock the free list.
 	 */
-	if (un_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
-		err_dump("_db_findfree: un_lock error");
+    if (un_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
+    {
+        err_dump("_db_findfree: un_lock error");
+    }
+
 	return(rc);
 }
 
@@ -1015,8 +1062,7 @@ void db_rewind(DBHANDLE h)
  * records.  db_rewind must be called before this function is
  * called the first time.
  */
-char *
-db_nextrec(DBHANDLE h, char *key)
+char *db_nextrec(DBHANDLE h, char *key)
 {
 	DB		*db = h;
 	char	c;
@@ -1026,14 +1072,18 @@ db_nextrec(DBHANDLE h, char *key)
 	 * We read lock the free list so that we don't read
 	 * a record in the middle of its being deleted.
 	 */
-	if (readw_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
-		err_dump("db_nextrec: readw_lock error");
+    if (readw_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
+    {
+        err_dump("db_nextrec: readw_lock error");
+    }
 
+    /* loop until a nonblank key is found */
 	do {
 		/*
 		 * Read next sequential index record.
 		 */
-		if (_db_readidx(db, 0) < 0) {
+		if (_db_readidx(db, 0) < 0) 
+        {
 			ptr = NULL;		/* end of index file, EOF */
 			goto doreturn;
 		}
@@ -1042,18 +1092,26 @@ db_nextrec(DBHANDLE h, char *key)
 		 * Check if key is all blank (empty record).
 		 */
 		ptr = db->idxbuf;
-		while ((c = *ptr++) != 0  &&  c == SPACE)
-			;	/* skip until null byte or nonblank */
-	} while (c == 0);	/* loop until a nonblank key is found */
+        while ((c = *ptr++) != 0 && c == SPACE)
+        {
+            ;	/* skip until null byte or nonblank */
+        }
+	}while (c == 0);	
 
-	if (key != NULL)
-		strcpy(key, db->idxbuf);	/* return key */
+    if (key != NULL)
+    {
+        strcpy(key, db->idxbuf);	/* return key */
+    }
+
 	ptr = _db_readdat(db);	/* return pointer to data buffer */
 	db->cnt_nextrec++;
 
 doreturn:
-	if (un_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
-		err_dump("db_nextrec: un_lock error");
+    if (un_lock(db->idxfd, FREE_OFF, SEEK_SET, 1) < 0)
+    {
+        err_dump("db_nextrec: un_lock error");
+    }
+
 	return(ptr);
 }
 /*
