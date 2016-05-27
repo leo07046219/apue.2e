@@ -966,6 +966,7 @@ doReturn:
 /*
  * Try to find a free index record and accompanying data record
  * of the correct sizes.  We're only called by db_store.
+ 找到指定大小的空闲索引记录和相关联的数据记录
  */
 static int _db_findfree(DB *db, int keylen, int datlen)
 {
@@ -985,7 +986,8 @@ static int _db_findfree(DB *db, int keylen, int datlen)
 	 */
 	saveoffset = FREE_OFF;
 	offset = _db_readptr(db, saveoffset);
-
+    /*简单实现：只有当一个已删除记录的键长度及数据长度与要加入的键长度及数据长度一样时，
+    才重用已删除的空间。其他更好的重用删除空间的方法一般更复杂。*/
 	while (offset != 0) 
     {
 		nextoffset = _db_readidx(db, offset);
@@ -1010,6 +1012,7 @@ static int _db_findfree(DB *db, int keylen, int datlen)
 		 * the chain ptr that pointed to this empty record on
 		 * the free list.  We set this chain ptr to db->ptrval,
 		 * which removes the empty record from the free list.
+         将已找到记录的下一个链表指针写至前一记录的链表指针，从空闲链表中移除该记录
 		 */
 		_db_writeptr(db, saveoffset, db->ptrval);
 		rc = 0;
@@ -1036,7 +1039,7 @@ static int _db_findfree(DB *db, int keylen, int datlen)
  * Rewind the index file for db_nextrec.
  * Automatically called by db_open.
  * Must be called before first db_nextrec.
- 倒带，转回，回收数据库资源
+ 倒带，转回，回收数据库资源，把数据库重置到初始状态
  */
 void db_rewind(DBHANDLE h)
 {
@@ -1061,12 +1064,16 @@ void db_rewind(DBHANDLE h)
  * We just step our way through the index file, ignoring deleted
  * records.  db_rewind must be called before this function is
  * called the first time.
+ 1.返回数据库的下一条记录，返回值是指向数据缓冲的指针，并将键复制到非空的键指针指向的内存
+ 2.记录按他们在数据路文件中存放的顺序逐一返回，并不按键值大小排序
+ 3.并不跟随散列链表，可能读到已删除的记录，只是不向调用者返回这种及删除记录
+ 4.返回的是在变化的数据库中在某一时间的快照
  */
 char *db_nextrec(DBHANDLE h, char *key)
 {
 	DB		*db = h;
 	char	c;
-	char	*ptr;
+	char	*ptr = NULL;
 
 	/*
 	 * We read lock the free list so that we don't read
@@ -1077,25 +1084,23 @@ char *db_nextrec(DBHANDLE h, char *key)
         err_dump("db_nextrec: readw_lock error");
     }
 
-    /* loop until a nonblank key is found */
+    /* loop until a nonblank key is found 逐条顺序读索引文件*/
 	do {
-		/*
-		 * Read next sequential index record.
-		 */
+
+		/* Read next sequential index record.*/
 		if (_db_readidx(db, 0) < 0) 
         {
 			ptr = NULL;		/* end of index file, EOF */
 			goto doreturn;
 		}
 
-		/*
-		 * Check if key is all blank (empty record).
-		 */
+		/* Check if key is all blank (empty record)跳过全是空格的记录，不返回*/
 		ptr = db->idxbuf;
         while ((c = *ptr++) != 0 && c == SPACE)
         {
             ;	/* skip until null byte or nonblank */
         }
+
 	}while (c == 0);	
 
     if (key != NULL)
@@ -1116,5 +1121,8 @@ doreturn:
 }
 /*
 1.为简化起见，将所有函数都放在一个文件中，这样处理的有点是，只要将私有函数声明为static，就可对外将其隐藏起来；
-2.
+2.锁
+2.1.db_writeidx  对索引文件加锁，加锁范围从散列链末尾到文件末尾，不影响其他数据库的读写用户；；
+2.2._db_writedat 对整个数据文件加锁,同样不影响其他数据库的读写用户；
+2.3.读写数据库，对散列链加锁，不对数据文件加锁；
 */
