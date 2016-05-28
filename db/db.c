@@ -1125,4 +1125,9 @@ doreturn:
 2.1.db_writeidx  对索引文件加锁，加锁范围从散列链末尾到文件末尾，不影响其他数据库的读写用户；；
 2.2._db_writedat 对整个数据文件加锁,同样不影响其他数据库的读写用户；
 2.3.读写数据库，对散列链加锁，不对数据文件加锁；
+3.运行时动态库问题：
+apue.2e/db$ ./t4
+./t4: error while loading shared libraries: libapue_db.so.1: cannot open shared object file: No such file or directory
+
+libapue_db.so.1 拷贝的/lib下面即可
 */
