@@ -54,20 +54,20 @@ int					log_to_stderr = 0;
 /*
  * Printer-related stuff.
  */
-struct addrinfo		*printer;
-char					*printer_name;
-pthread_mutex_t		configlock = PTHREAD_MUTEX_INITIALIZER;
-int					reread;
+struct addrinfo		*printer;//打印机网络地址
+char					*printer_name;//打印机主机名称
+pthread_mutex_t		configlock = PTHREAD_MUTEX_INITIALIZER;//保护对reread访问
+int					reread;//表示守护进程需要再次读取配置文件
 
 /*
- * Thread-related stuff.
+ * Thread-related stuff.线程双向链表头，用于接受来自客户端的文件
  */
 struct worker_thread	*workers;
 pthread_mutex_t		workerlock = PTHREAD_MUTEX_INITIALIZER;
 sigset_t				mask;
 
 /*
- * Job-related stuff.
+ * Job-related stuff.挂起作业链表
  */
 struct job				*jobhead, *jobtail;
 int					jobfd;
@@ -98,22 +98,26 @@ void		client_cleanup(void *);
 /*
  * Main print server thread.  Accepts connect requests from
  * clients and spawns additional threads to service requests.
- *
+ *main做两件事情：初始化守护进程+处理来自客户端的请求
  * LOCKING: none.
  */
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	pthread_t			tid;
-	struct addrinfo		*ailist, *aip;
-	int					sockfd, err, i, n, maxfd;
-	char				*host;
+	struct addrinfo		*ailist = NULL, *aip = NULL;
+	int					sockfd = 0, err = 0, i = 0, n = 0, maxfd = 0;
+	char				*host = NULL;
 	fd_set				rendezvous, rset;
 	struct sigaction	sa;
-	struct passwd		*pwdp;
+	struct passwd		*pwdp = NULL;
 
-	if (argc != 1)
-		err_quit("usage: printd");
+    if (argc != 1)
+    {
+        err_quit("usage: printd");
+    }
+
+    memset(&sa, 0, sizeof(sa));
+
 	daemonize("printd");
 
 	sigemptyset(&sa.sa_mask);
@@ -124,8 +128,10 @@ main(int argc, char *argv[])
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGHUP);
 	sigaddset(&mask, SIGTERM);
-	if ((err = pthread_sigmask(SIG_BLOCK, &mask, NULL)) != 0)
-		log_sys("pthread_sigmask failed");
+    if ((err = pthread_sigmask(SIG_BLOCK, &mask, NULL)) != 0)
+    {
+        log_sys("pthread_sigmask failed");
+    }
 	init_request();
 	init_printer();
 
@@ -139,22 +145,29 @@ main(int argc, char *argv[])
 		log_sys("malloc error");
 	if (gethostname(host, n) < 0)
 		log_sys("gethostname error");
-	if ((err = getaddrlist(host, "print", &ailist)) != 0) {
+	if ((err = getaddrlist(host, "print", &ailist)) != 0) 
+    {
 		log_quit("getaddrinfo error: %s", gai_strerror(err));
 		exit(1);
 	}
 	FD_ZERO(&rendezvous);
 	maxfd = -1;
-	for (aip = ailist; aip != NULL; aip = aip->ai_next) {
-		if ((sockfd = initserver(SOCK_STREAM, aip->ai_addr,
-		  aip->ai_addrlen, QLEN)) >= 0) {
+	for (aip = ailist; aip != NULL; aip = aip->ai_next) 
+    {
+		if ((sockfd = initserver(SOCK_STREAM, aip->ai_addr, \
+		  aip->ai_addrlen, QLEN)) >= 0) 
+        {
 			FD_SET(sockfd, &rendezvous);
-			if (sockfd > maxfd)
-				maxfd = sockfd;
+            if (sockfd > maxfd)
+            {
+                maxfd = sockfd;
+            }
 		}
 	}
-	if (maxfd == -1)
-		log_quit("service not enabled");
+    if (maxfd == -1)
+    {
+        log_quit("service not enabled");
+    }
 
 	pwdp = getpwnam("lp");
 	if (pwdp == NULL)
@@ -170,12 +183,16 @@ main(int argc, char *argv[])
 
 	log_msg("daemon initialized");
 
-	for (;;) {
+	for (;;) 
+    {
 		rset = rendezvous;
 		if (select(maxfd+1, &rset, NULL, NULL, NULL) < 0)
 			log_sys("select failed");
-		for (i = 0; i <= maxfd; i++) {
-			if (FD_ISSET(i, &rset)) {
+
+		for (i = 0; i <= maxfd; i++) 
+        {
+			if (FD_ISSET(i, &rset)) 
+            {
 
 				/*
 				 * Accept the connection and handle
@@ -198,8 +215,7 @@ main(int argc, char *argv[])
  *
  * LOCKING: none, except for record-lock on job ID file.
  */
-void
-init_request(void)
+void init_request(void)
 {
 	int		n;
 	char	name[FILENMSZ];
