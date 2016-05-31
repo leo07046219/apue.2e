@@ -262,6 +262,7 @@ void init_request(void)
 
     memset(name, 0, sizeof(name));
 
+    /*利用文件锁保证守护进程的唯一性*/
 	sprintf(name, "%s/%s", SPOOLDIR, JOBFILE);
 	jobfd = open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
     if (write_lock(jobfd, 0, SEEK_SET, 0) < 0)
@@ -277,6 +278,7 @@ void init_request(void)
         log_sys("can't read job file");
     }
 
+    /*若文件刚创建并因此为空，那么将nextjob设置为1*/
     if (0 == n)
     {
         nextjob = 1;
@@ -285,6 +287,7 @@ void init_request(void)
     {
         nextjob = atol(name);
     }
+    /*不能关闭该文件，因为这将释放已经放置在上面的写锁*/
 }
 
 /*
@@ -311,15 +314,20 @@ init_printer(void)
  *
  * LOCKING: none.
  */
-void
-update_jobno(void)
+void update_jobno(void)
 {
 	char	buf[32];
 
+    memset(buf, 0, sizeof(buf));
+
 	lseek(jobfd, 0, SEEK_SET);
+
 	sprintf(buf, "%ld", nextjob);
-	if (write(jobfd, buf, strlen(buf)) < 0)
-		log_sys("can't update job file");
+
+    if (write(jobfd, buf, strlen(buf)) < 0)
+    {
+        log_sys("can't update job file");
+    }
 }
 
 /*
@@ -327,16 +335,20 @@ update_jobno(void)
  *
  * LOCKING: acquires and releases joblock.
  */
-long
-get_newjobno(void)
+long get_newjobno(void)
 {
-	long	jobid;
+	long	jobid = 0;
 
 	pthread_mutex_lock(&joblock);
+
 	jobid = nextjob++;
-	if (nextjob <= 0)
-		nextjob = 1;
+    if (nextjob <= 0)
+    {
+        nextjob = 1;
+    }
+
 	pthread_mutex_unlock(&joblock);
+
 	return(jobid);
 }
 
@@ -346,42 +358,54 @@ get_newjobno(void)
  *
  * LOCKING: acquires and releases joblock.
  */
-void
-add_job(struct printreq *reqp, long jobid)
+void add_job(struct printreq *reqp, long jobid)
 {
-	struct job	*jp;
+	struct job	*jp = NULL;
 
-	if ((jp = malloc(sizeof(struct job))) == NULL)
-		log_sys("malloc failed");
+    if (NULL == (jp = malloc(sizeof(struct job))))
+    {
+        log_sys("malloc failed");
+    }
+
 	memcpy(&jp->req, reqp, sizeof(struct printreq));
 	jp->jobid = jobid;
 	jp->next = NULL;
+
 	pthread_mutex_lock(&joblock);
 	jp->prev = jobtail;
-	if (jobtail == NULL)
-		jobhead = jp;
-	else
-		jobtail->next = jp;
+    if (NULL == jobtail)
+    {
+        jobhead = jp;
+    }
+    else
+    {
+        jobtail->next = jp;
+    }
 	jobtail = jp;
 	pthread_mutex_unlock(&joblock);
+
+    /*给打印机线程发信号，告诉该线程另一个作业可用了*/
 	pthread_cond_signal(&jobwait);
 }
 
 /*
  * Replace a job back on the head of the list.
- *
+ *将作业插入到挂起作业列表头部
  * LOCKING: acquires and releases joblock.
  */
-void
-replace_job(struct job *jp)
+void replace_job(struct job *jp)
 {
 	pthread_mutex_lock(&joblock);
 	jp->prev = NULL;
 	jp->next = jobhead;
-	if (jobhead == NULL)
-		jobtail = jp;
-	else
-		jobhead->prev = jp;
+    if (NULL == jobhead)
+    {
+        jobtail = jp;
+    }
+    else
+    {
+        jobhead->prev = jp;
+    }
 	jobhead = jp;
 	pthread_mutex_unlock(&joblock);
 }
@@ -391,8 +415,7 @@ replace_job(struct job *jp)
  *
  * LOCKING: caller must hold joblock.
  */
-void
-remove_job(struct job *target)
+void remove_job(struct job *target)
 {
 	if (target->next != NULL)
 		target->next->prev = target->prev;
