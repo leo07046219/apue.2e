@@ -120,36 +120,54 @@ int main(int argc, char *argv[])
 
 	daemonize("printd");
 
+    /*忽略SIGPIPE信号
+    将要写socket fd，并且不想让写错误出发SIGPIPE，因为默认动作是杀死进程*/
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
 	sa.sa_handler = SIG_IGN;
-	if (sigaction(SIGPIPE, &sa, NULL) < 0)
-		log_sys("sigaction failed");
+    if (sigaction(SIGPIPE, &sa, NULL) < 0)
+    {
+        log_sys("sigaction failed");
+    }
+
+    /*设置线程的信号掩码，创建的所有线程均继承这个信号掩码*/
 	sigemptyset(&mask);
-	sigaddset(&mask, SIGHUP);
-	sigaddset(&mask, SIGTERM);
+	sigaddset(&mask, SIGHUP);   //告诉守护进程再次读取配置文件
+	sigaddset(&mask, SIGTERM);  //告诉守护进程清执行清理工作并优雅退出
     if ((err = pthread_sigmask(SIG_BLOCK, &mask, NULL)) != 0)
     {
         log_sys("pthread_sigmask failed");
     }
+
+    /*初始化作业请求并确保只有一个守护进程的副本在运行*/
 	init_request();
+
+    /*初始化打印机信息*/
 	init_printer();
 
 #ifdef _SC_HOST_NAME_MAX
 	n = sysconf(_SC_HOST_NAME_MAX);
 	if (n < 0)	/* best guess */
 #endif
-		n = HOST_NAME_MAX;
+    n = HOST_NAME_MAX;
 
-	if ((host = malloc(n)) == NULL)
-		log_sys("malloc error");
-	if (gethostname(host, n) < 0)
-		log_sys("gethostname error");
+    if (NULL == (host = malloc(n)))
+    {
+        log_sys("malloc error");
+    }
+
+    if (gethostname(host, n) < 0)
+    {
+        log_sys("gethostname error");
+    }
+
 	if ((err = getaddrlist(host, "print", &ailist)) != 0) 
     {
 		log_quit("getaddrinfo error: %s", gai_strerror(err));
 		exit(1);
 	}
+
+    /*初始化服务器 和 被select的fd*/
 	FD_ZERO(&rendezvous);
 	maxfd = -1;
 	for (aip = ailist; aip != NULL; aip = aip->ai_next) 
@@ -164,31 +182,48 @@ int main(int argc, char *argv[])
             }
 		}
 	}
-    if (maxfd == -1)
+    if (-1 == maxfd)
     {
         log_quit("service not enabled");
     }
 
+    /*降低权限，最小特权原则，以避免在守护进程程序中将系统暴露给任何可能的攻击*/
 	pwdp = getpwnam("lp");
-	if (pwdp == NULL)
-		log_sys("can't find user lp");
-	if (pwdp->pw_uid == 0)
-		log_quit("user lp is privileged");
-	if (setuid(pwdp->pw_uid) < 0)
-		log_sys("can't change IDs to user lp");
+    if (NULL == pwdp)
+    {
+        log_sys("can't find user lp");
+    }
+    if (0 == pwdp->pw_uid)
+    {
+        log_quit("user lp is privileged");
+    }
+    if (setuid(pwdp->pw_uid) < 0)
+    {
+        log_sys("can't change IDs to user lp");
+    }
 
+    /*创建处理信号的线程*/
 	pthread_create(&tid, NULL, printer_thread, NULL);
+
+    /*创建于打印机通信的线程*/
 	pthread_create(&tid, NULL, signal_thread, NULL);
+
+    /*在/var/spool/printer目录中搜索任何挂起的作业*/
 	build_qonstart();
 
+    /*完成守护进程的所有初始化工作，记入日志*/
 	log_msg("daemon initialized");
 
 	for (;;) 
     {
+        /*不能直接使用rendezvous，select会修改入口参数*/
 		rset = rendezvous;
-		if (select(maxfd+1, &rset, NULL, NULL, NULL) < 0)
-			log_sys("select failed");
+        if (select(maxfd + 1, &rset, NULL, NULL, NULL) < 0)
+        {
+            log_sys("select failed");
+        }
 
+        /*接收到一个连接请求，就accept之，并创建子线程处理客户端请求*/
 		for (i = 0; i <= maxfd; i++) 
         {
 			if (FD_ISSET(i, &rset)) 
@@ -199,13 +234,18 @@ int main(int argc, char *argv[])
 				 * the request.
 				 */
 				sockfd = accept(i, NULL, NULL);
-				if (sockfd < 0)
-					log_ret("accept failed");
-				pthread_create(&tid, NULL, client_thread,
+
+                if (sockfd < 0)
+                {
+                    log_ret("accept failed");
+                }
+
+				pthread_create(&tid, NULL, client_thread, \
 				  (void *)sockfd);
 			}
 		}
 	}
+
 	exit(1);
 }
 
@@ -217,23 +257,34 @@ int main(int argc, char *argv[])
  */
 void init_request(void)
 {
-	int		n;
+	int		n = 0;
 	char	name[FILENMSZ];
+
+    memset(name, 0, sizeof(name));
 
 	sprintf(name, "%s/%s", SPOOLDIR, JOBFILE);
 	jobfd = open(name, O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
-	if (write_lock(jobfd, 0, SEEK_SET, 0) < 0)
-		log_quit("daemon already running");
+    if (write_lock(jobfd, 0, SEEK_SET, 0) < 0)
+    {
+        log_quit("daemon already running");
+    }
 
 	/*
 	 * Reuse the name buffer for the job counter.
 	 */
-	if ((n = read(jobfd, name, FILENMSZ)) < 0)
-		log_sys("can't read job file");
-	if (n == 0)
-		nextjob = 1;
-	else
-		nextjob = atol(name);
+    if ((n = read(jobfd, name, FILENMSZ)) < 0)
+    {
+        log_sys("can't read job file");
+    }
+
+    if (0 == n)
+    {
+        nextjob = 1;
+    }
+    else
+    {
+        nextjob = atol(name);
+    }
 }
 
 /*
