@@ -417,86 +417,118 @@ void replace_job(struct job *jp)
  */
 void remove_job(struct job *target)
 {
-	if (target->next != NULL)
-		target->next->prev = target->prev;
-	else
-		jobtail = target->prev;
-	if (target->prev != NULL)
-		target->prev->next = target->next;
-	else
-		jobhead = target->next;
+    if (target->next != NULL)
+    {
+        target->next->prev = target->prev;
+    }
+    else
+    {
+        jobtail = target->prev;
+    }
+    if (target->prev != NULL)
+    {
+        target->prev->next = target->next;
+    }
+    else
+    {
+        jobhead = target->next;
+    }
 }
 
 /*
  * Check the spool directory for pending jobs on start-up.
- *
+ *从存储在/var/spool/printer/reqs中的磁盘文件建立一个内存中的打印作业列表
  * LOCKING: none.
  */
-void
-build_qonstart(void)
+void build_qonstart(void)
 {
-	int				fd, err, nr;
-	long			jobid;
-	DIR				*dirp;
-	struct dirent	*entp;
+	int				fd = 0, err = 0, nr = 0;
+	long			jobid = 0;
+	DIR				*dirp = NULL;
+	struct dirent	*entp = NULL;
 	struct printreq	req;
 	char			dname[FILENMSZ], fname[FILENMSZ];
 
+    memset(&req, 0, sizeof(req));
+    memset(dname, 0, sizeof(dname));
+    memset(fname, 0, sizeof(fname));
+
 	sprintf(dname, "%s/%s", SPOOLDIR, REQDIR);
-	if ((dirp = opendir(dname)) == NULL)
-		return;
-	while ((entp = readdir(dirp)) != NULL) {
+    if (NULL == (dirp = opendir(dname)))
+    {
+        return;
+    }
+    /*遍历目录从除.和..之外的所有条目，读取保存在文件中的printreq结构*/
+	while ((entp = readdir(dirp)) != NULL) 
+    {
 		/*
 		 * Skip "." and ".."
 		 */
-		if (strcmp(entp->d_name, ".") == 0 ||
-		  strcmp(entp->d_name, "..") == 0)
-			continue;
+        if (strcmp(entp->d_name, ".") == 0 || \
+            strcmp(entp->d_name, "..") == 0)
+        {
+            continue;
+        }
 
 		/*
 		 * Read the request structure.
 		 */
 		sprintf(fname, "%s/%s/%s", SPOOLDIR, REQDIR, entp->d_name);
-		if ((fd = open(fname, O_RDONLY)) < 0)
-			continue;
+        if ((fd = open(fname, O_RDONLY)) < 0)
+        {
+            continue;
+        }
+
 		nr = read(fd, &req, sizeof(struct printreq));
-		if (nr != sizeof(struct printreq)) {
-			if (nr < 0)
-				err = errno;
-			else
-				err = EIO;
+		if (nr != sizeof(struct printreq)) 
+        {
+            if (nr < 0)
+            {
+                err = errno;
+            }
+            else
+            {
+                err = EIO;
+            }
 			close(fd);
-			log_msg("build_qonstart: can't read %s: %s",
+			log_msg("build_qonstart: can't read %s: %s", \
 			  fname, strerror(err));
 			unlink(fname);
-			sprintf(fname, "%s/%s/%s", SPOOLDIR, DATADIR,
+			sprintf(fname, "%s/%s/%s", SPOOLDIR, DATADIR, \
 			  entp->d_name);
 			unlink(fname);
 			continue;
 		}
+        /*将文件名转换为作业id*/
 		jobid = atol(entp->d_name);
 		log_msg("adding job %ld to queue", jobid);
 		add_job(&req, jobid);
 	}
+
 	closedir(dirp);
 }
 
 /*
  * Accept a print job from a client.
- *
+ *从客户端print命令中接收要打印的文件
  * LOCKING: none.
  */
-void *
-client_thread(void *arg)
+void *client_thread(void *arg)
 {
-	int					n, fd, sockfd, nr, nw, first;
-	long				jobid;
+	int					n = 0, fd = 0, sockfd = 0, nr = 0, nw = 0, first = 0;
+	long				jobid = 0;
 	pthread_t			tid;
 	struct printreq		req;
 	struct printresp	res;
 	char				name[FILENMSZ];
 	char				buf[IOBUFSZ];
 
+    memset(&req, 0, sizeof(req));
+    memset(&res, 0, sizeof(res));
+    memset(name, 0, sizeof(name));
+    memset(buf, 0, sizeof(buf));
+
+    /*安装线程清理处理程序*/
 	tid = pthread_self();
 	pthread_cleanup_push(client_cleanup, (void *)tid);
 	sockfd = (int)arg;
@@ -505,17 +537,26 @@ client_thread(void *arg)
 	/*
 	 * Read the request header.
 	 */
-	if ((n = treadn(sockfd, &req, sizeof(struct printreq), 10)) !=
-	  sizeof(struct printreq)) {
+	if ((n = treadn(sockfd, &req, sizeof(struct printreq), 10)) != \
+	  sizeof(struct printreq))
+    {
+        /*接收数据不对，向客户端返回错误号，并退出线程 --- 可以提取函数,多个地方用到*/
 		res.jobid = 0;
-		if (n < 0)
-			res.retcode = htonl(errno);
-		else
-			res.retcode = htonl(EIO);
+        if (n < 0)
+        {
+            res.retcode = htonl(errno);
+        }
+        else
+        {
+            res.retcode = htonl(EIO);
+        }
 		strncpy(res.msg, strerror(res.retcode), MSGLEN_MAX);
 		writen(sockfd, &res, sizeof(struct printresp));
+        /*不需要显示关闭sockfd，但调用pthread_exit时，线程清理处理程序会处理文件描述符*/
+
 		pthread_exit((void *)1);
 	}
+
 	req.size = ntohl(req.size);
 	req.flags = ntohl(req.flags);
 
@@ -524,73 +565,108 @@ client_thread(void *arg)
 	 */
 	jobid = get_newjobno();
 	sprintf(name, "%s/%s/%ld", SPOOLDIR, DATADIR, jobid);
-	if ((fd = creat(name, FILEPERM)) < 0) {
+
+	if ((fd = creat(name, FILEPERM)) < 0) 
+    {
 		res.jobid = 0;
-		if (n < 0)
-			res.retcode = htonl(errno);
-		else
-			res.retcode = htonl(EIO);
-		log_msg("client_thread: can't create %s: %s", name,
+        if (n < 0)
+        {
+            res.retcode = htonl(errno);
+        }
+        else
+        {
+            res.retcode = htonl(EIO);
+        }
+
+		log_msg("client_thread: can't create %s: %s", name, \
 		  strerror(res.retcode));
+
 		strncpy(res.msg, strerror(res.retcode), MSGLEN_MAX);
 		writen(sockfd, &res, sizeof(struct printresp));
+
 		pthread_exit((void *)1);
 	}
 
 	/*
-	 * Read the file and store it in the spool directory.
+	 * Read the file and store it in the spool directory.保存数据文件
 	 */
 	first = 1;
-	while ((nr = tread(sockfd, buf, IOBUFSZ, 20)) > 0) {
-		if (first) {
+	while ((nr = tread(sockfd, buf, IOBUFSZ, 20)) > 0) 
+    {
+		if (first) 
+        {
 			first = 0;
-			if (strncmp(buf, "%!PS", 4) != 0)
-				req.flags |= PR_TEXT;
+            if (strncmp(buf, "%!PS", 4) != 0)   //PostScript是以%!PS模式开头的
+            {
+                req.flags |= PR_TEXT;   //纯文本文件
+            }
 		}
+
 		nw = write(fd, buf, nr);
-		if (nw != nr) {
-			if (nw < 0)
-				res.retcode = htonl(errno);
-			else
-				res.retcode = htonl(EIO);
-			log_msg("client_thread: can't write %s: %s", name,
+		if (nw != nr) 
+        {
+            if (nw < 0)
+            {
+                res.retcode = htonl(errno);
+            }
+            else
+            {
+                res.retcode = htonl(EIO);
+            }
+
+			log_msg("client_thread: can't write %s: %s", name, \
 			  strerror(res.retcode));
 			close(fd);
 			strncpy(res.msg, strerror(res.retcode), MSGLEN_MAX);
 			writen(sockfd, &res, sizeof(struct printresp));
+            /*不需要显示关闭sockfd，但调用pthread_exit时，线程清理处理程序会处理文件描述符*/
 			unlink(name);
+
 			pthread_exit((void *)1);
 		}
 	}
 	close(fd);
 
 	/*
-	 * Create the control file.
+	 * Create the control file.记住打印请求，以作业id为文件名
 	 */
 	sprintf(name, "%s/%s/%ld", SPOOLDIR, REQDIR, jobid);
 	fd = creat(name, FILEPERM);
-	if (fd < 0) {
+	if (fd < 0) 
+    {
 		res.jobid = 0;
-		if (n < 0)
-			res.retcode = htonl(errno);
-		else
-			res.retcode = htonl(EIO);
-		log_msg("client_thread: can't create %s: %s", name,
+        if (n < 0)
+        {
+            res.retcode = htonl(errno);
+        }
+        else
+        {
+            res.retcode = htonl(EIO);
+        }
+		log_msg("client_thread: can't create %s: %s", name, \
 		  strerror(res.retcode));
+
 		strncpy(res.msg, strerror(res.retcode), MSGLEN_MAX);
 		writen(sockfd, &res, sizeof(struct printresp));
 		sprintf(name, "%s/%s/%ld", SPOOLDIR, DATADIR, jobid);
 		unlink(name);
+
 		pthread_exit((void *)1);
 	}
+
 	nw = write(fd, &req, sizeof(struct printreq));
-	if (nw != sizeof(struct printreq)) {
+	if (nw != sizeof(struct printreq)) 
+    {
 		res.jobid = 0;
-		if (nw < 0)
-			res.retcode = htonl(errno);
-		else
-			res.retcode = htonl(EIO);
-		log_msg("client_thread: can't write %s: %s", name,
+        if (nw < 0)
+        {
+            res.retcode = htonl(errno);
+        }
+        else
+        {
+            res.retcode = htonl(EIO);
+        }
+		log_msg("client_thread: can't write %s: %s", name, \
 		  strerror(res.retcode));
 		close(fd);
 		strncpy(res.msg, strerror(res.retcode), MSGLEN_MAX);
@@ -600,6 +676,9 @@ client_thread(void *arg)
 		unlink(name);
 		pthread_exit((void *)1);
 	}
+    /*关闭控制文件描述符
+    和进程不同，当一个线程结束并且进程中有其他线程时，文件描述符不会自动关闭，
+    如果不关闭不需要的文件描述符，终将耗尽资源*/
 	close(fd);
 
 	/*
@@ -621,27 +700,32 @@ client_thread(void *arg)
 
 /*
 * Add a worker to the list of worker threads.
-*
+*将一个worker_thread结构加入到活动线程列表中
 * LOCKING: acquires and releases workerlock.
 */
-void
-add_worker(pthread_t tid, int sockfd)
+void add_worker(pthread_t tid, int sockfd)
 {
-	struct worker_thread	*wtp;
+	struct worker_thread	*wtp = NULL;
 
-	if ((wtp = malloc(sizeof(struct worker_thread))) == NULL) {
+	if ((wtp = malloc(sizeof(struct worker_thread))) == NULL) 
+    {
 		log_ret("add_worker: can't malloc");
 		pthread_exit((void *)1);
 	}
+
 	wtp->tid = tid;
 	wtp->sockfd = sockfd;
 	pthread_mutex_lock(&workerlock);
 	wtp->prev = NULL;
 	wtp->next = workers;
-	if (workers == NULL)
-		workers = wtp;
-	else
-		workers->prev = wtp;
+    if (NULL == workers)
+    {
+        workers = wtp;
+    }
+    else
+    {
+        workers->prev = wtp;
+    }
 	pthread_mutex_unlock(&workerlock);
 }
 
@@ -650,14 +734,17 @@ add_worker(pthread_t tid, int sockfd)
  *
  * LOCKING: acquires and releases workerlock.
  */
-void
-kill_workers(void)
+void kill_workers(void)
 {
-	struct worker_thread	*wtp;
+	struct worker_thread	*wtp = NULL;
 
 	pthread_mutex_lock(&workerlock);
-	for (wtp = workers; wtp != NULL; wtp = wtp->next)
-		pthread_cancel(wtp->tid);
+
+    for (wtp = workers; wtp != NULL; wtp = wtp->next)
+    {
+        pthread_cancel(wtp->tid);
+    }
+
 	pthread_mutex_unlock(&workerlock);
 }
 
@@ -666,27 +753,38 @@ kill_workers(void)
  *
  * LOCKING: acquires and releases workerlock.
  */
-void
-client_cleanup(void *arg)
+void client_cleanup(void *arg)
 {
-	struct worker_thread	*wtp;
+	struct worker_thread	*wtp = NULL;
 	pthread_t				tid;
 
 	tid = (pthread_t)arg;
+
 	pthread_mutex_lock(&workerlock);
-	for (wtp = workers; wtp != NULL; wtp = wtp->next) {
-		if (wtp->tid == tid) {
-			if (wtp->next != NULL)
-				wtp->next->prev = wtp->prev;
-			if (wtp->prev != NULL)
-				wtp->prev->next = wtp->next;
-			else
-				workers = wtp->next;
+	for (wtp = workers; wtp != NULL; wtp = wtp->next) 
+    {
+		if (wtp->tid == tid) 
+        {
+            if (wtp->next != NULL)
+            {
+                wtp->next->prev = wtp->prev;
+            }
+            if (wtp->prev != NULL)
+            {
+                wtp->prev->next = wtp->next;
+            }
+            else
+            {
+                workers = wtp->next;
+            }
+
 			break;
 		}
 	}
 	pthread_mutex_unlock(&workerlock);
-	if (wtp != NULL) {
+
+	if (wtp != NULL) 
+    {
 		close(wtp->sockfd);
 		free(wtp);
 	}
@@ -697,16 +795,21 @@ client_cleanup(void *arg)
  *
  * LOCKING: acquires and releases configlock.
  */
-void *
-signal_thread(void *arg)
+void *signal_thread(void *arg)
 {
-	int		err, signo;
+	int		err = 0, signo = 0;
 
-	for (;;) {
+	for (;;) 
+    {
 		err = sigwait(&mask, &signo);
-		if (err != 0)
-			log_quit("sigwait failed: %s", strerror(err));
-		switch (signo) {
+
+        if (err != 0)
+        {
+            log_quit("sigwait failed: %s", strerror(err));
+        }
+
+		switch (signo) 
+        {
 		case SIGHUP:
 			/*
 			 * Schedule to re-read the configuration file.
@@ -736,11 +839,13 @@ signal_thread(void *arg)
 char *
 add_option(char *cp, int tag, char *optname, char *optval)
 {
-	int		n;
-	union {
+	int		n = 0;
+
+	union 
+    {
 		int16_t s;
 		char c[2];
-	}		u;
+	}u;
 
 	*cp++ = tag;
 	n = strlen(optname);
@@ -754,6 +859,7 @@ add_option(char *cp, int tag, char *optname, char *optval)
 	*cp++ = u.c[0];
 	*cp++ = u.c[1];
 	strcpy(cp, optval);
+
 	return(cp + n);
 }
 
@@ -762,13 +868,12 @@ add_option(char *cp, int tag, char *optname, char *optval)
  *
  * LOCKING: acquires and releases joblock and configlock.
  */
-void *
-printer_thread(void *arg)
+void *printer_thread(void *arg)
 {
-	struct job		*jp;
-	int				hlen, ilen, sockfd, fd, nr, nw;
-	char			*icp, *hcp;
-	struct ipp_hdr	*hp;
+	struct job		*jp = NULL;
+	int				hlen = 0, ilen = 0, sockfd = 0, fd = 0, nr = 0, nw = 0;
+	char			*icp = NULL, *hcp = NULL;
+	struct ipp_hdr	*hp = NULL;
 	struct stat		sbuf;
 	struct iovec	iov[2];
 	char			name[FILENMSZ];
@@ -777,12 +882,22 @@ printer_thread(void *arg)
 	char			buf[IOBUFSZ];
 	char			str[64];
 
-	for (;;) {
+    memset(&sbuf, 0, sizeof(sbuf));
+    memset(iov, 0, sizeof(iov));
+    memset(name, 0, sizeof(name));
+    memset(hbuf, 0, sizeof(hbuf));
+    memset(buf, 0, sizeof(buf));
+    memset(str, 0, sizeof(str));
+
+	for (;;) 
+    {
 		/*
 		 * Get a job to print.
 		 */
 		pthread_mutex_lock(&joblock);
-		while (jobhead == NULL) {
+
+		while (NULL == jobhead) 
+        {
 			log_msg("printer_thread: waiting...");
 			pthread_cond_wait(&jobwait, &joblock);
 		}
@@ -796,14 +911,17 @@ printer_thread(void *arg)
 		 * Check for a change in the config file.
 		 */
 		pthread_mutex_lock(&configlock);
-		if (reread) {
+		if (reread) 
+        {
 			freeaddrinfo(printer);
 			printer = NULL;
 			printer_name = NULL;
 			reread = 0;
 			pthread_mutex_unlock(&configlock);
 			init_printer();
-		} else {
+		} 
+        else 
+        {
 			pthread_mutex_unlock(&configlock);
 		}
 
@@ -811,26 +929,33 @@ printer_thread(void *arg)
 		 * Send job to printer.
 		 */
 		sprintf(name, "%s/%s/%ld", SPOOLDIR, DATADIR, jp->jobid);
-		if ((fd = open(name, O_RDONLY)) < 0) {
+		if ((fd = open(name, O_RDONLY)) < 0) 
+        {
 			log_msg("job %ld canceled - can't open %s: %s",
 			  jp->jobid, name, strerror(errno));
 			free(jp);
 			continue;
 		}
-		if (fstat(fd, &sbuf) < 0) {
+
+		if (fstat(fd, &sbuf) < 0) 
+        {
 			log_msg("job %ld canceled - can't fstat %s: %s",
 			  jp->jobid, name, strerror(errno));
 			free(jp);
 			close(fd);
 			continue;
 		}
-		if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+
+		if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
+        {
 			log_msg("job %ld deferred - can't create socket: %s",
 			  jp->jobid, strerror(errno));
 			goto defer;
 		}
-		if (connect_retry(sockfd, printer->ai_addr,
-		  printer->ai_addrlen) < 0) {
+
+		if (connect_retry(sockfd, printer->ai_addr, \
+		  printer->ai_addrlen) < 0) 
+        {
 			log_msg("job %ld deferred - can't contact printer: %s",
 			  jp->jobid, strerror(errno));
 			goto defer;
@@ -847,21 +972,25 @@ printer_thread(void *arg)
 		hp->request_id = htonl(jp->jobid);
 		icp += offsetof(struct ipp_hdr, attr_group);
 		*icp++ = TAG_OPERATION_ATTR;
-		icp = add_option(icp, TAG_CHARSET, "attributes-charset",
+		icp = add_option(icp, TAG_CHARSET, "attributes-charset", \
 		  "utf-8");
-		icp = add_option(icp, TAG_NATULANG,
+		icp = add_option(icp, TAG_NATULANG, \
 		  "attributes-natural-language", "en-us");
 		sprintf(str, "http://%s:%d", printer_name, IPP_PORT);
 		icp = add_option(icp, TAG_URI, "printer-uri", str);
-		icp = add_option(icp, TAG_NAMEWOLANG,
+		icp = add_option(icp, TAG_NAMEWOLANG, \
 		  "requesting-user-name", jp->req.usernm);
-		icp = add_option(icp, TAG_NAMEWOLANG, "job-name",
+		icp = add_option(icp, TAG_NAMEWOLANG, "job-name", \
 		  jp->req.jobnm);
-		if (jp->req.flags & PR_TEXT) {
-			icp = add_option(icp, TAG_MIMETYPE, "document-format",
+
+		if (jp->req.flags & PR_TEXT) 
+        {
+			icp = add_option(icp, TAG_MIMETYPE, "document-format", \
 			  "text/plain");
-		} else {
-			icp = add_option(icp, TAG_MIMETYPE, "document-format",
+		} 
+        else 
+        {
+			icp = add_option(icp, TAG_MIMETYPE, "document-format", \
 			  "application/postscript");
 		}
 		*icp++ = TAG_END_OF_ATTR;
@@ -873,7 +1002,7 @@ printer_thread(void *arg)
 		hcp = hbuf;
 		sprintf(hcp, "POST /%s/ipp HTTP/1.1\r\n", printer_name);
 		hcp += strlen(hcp);
-		sprintf(hcp, "Content-Length: %ld\r\n",
+		sprintf(hcp, "Content-Length: %ld\r\n", \
 		  (long)sbuf.st_size + ilen);
 		hcp += strlen(hcp);
 		strcpy(hcp, "Content-Type: application/ipp\r\n");
@@ -891,20 +1020,30 @@ printer_thread(void *arg)
 		iov[0].iov_len = hlen;
 		iov[1].iov_base = ibuf;
 		iov[1].iov_len = ilen;
-		if ((nw = writev(sockfd, iov, 2)) != hlen + ilen) {
+		if ((nw = writev(sockfd, iov, 2)) != hlen + ilen) 
+        {
 			log_ret("can't write to printer");
 			goto defer;
 		}
-		while ((nr = read(fd, buf, IOBUFSZ)) > 0) {
-			if ((nw = write(sockfd, buf, nr)) != nr) {
-				if (nw < 0)
-				  log_ret("can't write to printer");
-				else
-				  log_msg("short write (%d/%d) to printer", nw, nr);
+
+		while ((nr = read(fd, buf, IOBUFSZ)) > 0) 
+        {
+			if ((nw = write(sockfd, buf, nr)) != nr) 
+            {
+                if (nw < 0)
+                {
+                    log_ret("can't write to printer");
+                }
+                else
+                {
+                    log_msg("short write (%d/%d) to printer", nw, nr);
+                }
 				goto defer;
 			}
 		}
-		if (nr < 0) {
+
+		if (nr < 0) 
+        {
 			log_ret("can't read %s", name);
 			goto defer;
 		}
@@ -912,18 +1051,25 @@ printer_thread(void *arg)
 		/*
 		 * Read the response from the printer.
 		 */
-		if (printer_status(sockfd, jp)) {
+		if (printer_status(sockfd, jp)) 
+        {
 			unlink(name);
 			sprintf(name, "%s/%s/%ld", SPOOLDIR, REQDIR, jp->jobid);
 			unlink(name);
 			free(jp);
 			jp = NULL;
 		}
+
 defer:
 		close(fd);
-		if (sockfd >= 0)
-			close(sockfd);
-		if (jp != NULL) {
+
+        if (sockfd >= 0)
+        {
+            close(sockfd);
+        }
+
+		if (jp != NULL) 
+        {
 			replace_job(jp);
 			sleep(60);
 		}
@@ -936,24 +1082,31 @@ defer:
  *
  * LOCKING: none.
  */
-ssize_t
-readmore(int sockfd, char **bpp, int off, int *bszp)
+ssize_t readmore(int sockfd, char **bpp, int off, int *bszp)
 {
 	ssize_t	nr;
 	char	*bp = *bpp;
 	int		bsz = *bszp;
 
-	if (off >= bsz) {
+	if (off >= bsz) 
+    {
 		bsz += IOBUFSZ;
-		if ((bp = realloc(*bpp, bsz)) == NULL)
-			log_sys("readmore: can't allocate bigger read buffer");
+        if (NULL == (bp = realloc(*bpp, bsz)))
+        {
+            log_sys("readmore: can't allocate bigger read buffer");
+        }
+
 		*bszp = bsz;
 		*bpp = bp;
 	}
-	if ((nr = tread(sockfd, &bp[off], bsz-off, 1)) > 0)
-		return(off+nr);
-	else
-		return(-1);
+    if ((nr = tread(sockfd, &bp[off], bsz - off, 1)) > 0)
+    {
+        return(off + nr);
+    }
+    else
+    {
+        return(-1);
+    }
 }
 
 /*
@@ -962,8 +1115,7 @@ readmore(int sockfd, char **bpp, int off, int *bszp)
  *
  * LOCKING: none.
  */
-int
-printer_status(int sockfd, struct job *jp)
+int printer_status(int sockfd, struct job *jp)
 {
 	int				i, success, code, len, found, bufsz;
 	long			jobid;
@@ -1073,7 +1225,9 @@ printer_status(int sockfd, struct job *jp)
 			hp = (struct ipp_hdr *)cp;
 			i = ntohs(hp->Status);
 			jobid = ntohl(hp->request_id);
-			if (jobid != jp->jobid) {
+
+			if (jobid != jp->jobid) 
+            {
 				/*
 				 * Different jobs.  Ignore it.
 				 */
@@ -1081,17 +1235,22 @@ printer_status(int sockfd, struct job *jp)
 				break;
 			}
 
-			if (STATCLASS_OK(i))
-				success = 1;
+            if (STATCLASS_OK(i))
+            {
+                success = 1;
+            }
 			break;
 		}
 	}
 
 out:
 	free(bp);
-	if (nr < 0) {
+
+	if (nr < 0) 
+    {
 		log_msg("jobid %ld: error reading printer response: %s",
 		  jobid, strerror(errno));
 	}
+
 	return(success);
 }
