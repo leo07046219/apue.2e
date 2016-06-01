@@ -707,14 +707,16 @@ void add_worker(pthread_t tid, int sockfd)
 {
 	struct worker_thread	*wtp = NULL;
 
+    /*client_cleanup()中free*/
 	if ((wtp = malloc(sizeof(struct worker_thread))) == NULL) 
     {
 		log_ret("add_worker: can't malloc");
 		pthread_exit((void *)1);
 	}
-
 	wtp->tid = tid;
 	wtp->sockfd = sockfd;
+
+    /*将结构加到列表头部*/
 	pthread_mutex_lock(&workerlock);
 	wtp->prev = NULL;
 	wtp->next = workers;
@@ -742,6 +744,7 @@ void kill_workers(void)
 
     for (wtp = workers; wtp != NULL; wtp = wtp->next)
     {
+        /*实际的删除动作在每个线程到达实际的删除点时发生 --- 线程安全退出机制*/
         pthread_cancel(wtp->tid);
     }
 
@@ -750,7 +753,8 @@ void kill_workers(void)
 
 /*
  * Cancellation routine for the worker thread.
- *
+ *与客户端命令通信的工作者线程的线程清理处理程序，
+ 用非零参数调用pthread_cleanup_pop，或者响应一个删除请求时，该函数被调用。
  * LOCKING: acquires and releases workerlock.
  */
 void client_cleanup(void *arg)
@@ -783,6 +787,7 @@ void client_cleanup(void *arg)
 	}
 	pthread_mutex_unlock(&workerlock);
 
+    /*释放之前分配的内存*/
 	if (wtp != NULL) 
     {
 		close(wtp->sockfd);
@@ -792,7 +797,7 @@ void client_cleanup(void *arg)
 
 /*
  * Deal with signals.
- *
+ *由负责信号处理的线程运行
  * LOCKING: acquires and releases configlock.
  */
 void *signal_thread(void *arg)
@@ -801,6 +806,7 @@ void *signal_thread(void *arg)
 
 	for (;;) 
     {
+        /*等待信号中的一个出现*/
 		err = sigwait(&mask, &signo);
 
         if (err != 0)
@@ -816,10 +822,12 @@ void *signal_thread(void *arg)
 			 */
 			pthread_mutex_lock(&configlock);
 			reread = 1;
+            /*打印守护进程程序printer_thread中根据reread标志位决定是否重读配置文件*/
 			pthread_mutex_unlock(&configlock);
 			break;
 
 		case SIGTERM:
+            /*杀死所有工作线程*/
 			kill_workers();
 			log_msg("terminate with signal %s", strsignal(signo));
 			exit(0);
@@ -833,14 +841,16 @@ void *signal_thread(void *arg)
 
 /*
  * Add an option to the IPP header.
- *
+ *在送往打印机的IPP首部添加选项
  * LOCKING: none.
  */
-char *
-add_option(char *cp, int tag, char *optname, char *optval)
+char * add_option(char *cp, int tag, char *optname, char *optval)
 {
 	int		n = 0;
 
+    /*一些处理器架构，例如SPARC，并不能从任意地址装入一个整数，
+    通过下面方式实现：
+    n转转成网络字节序，赋给u.s,将u.c[2]赋给cp*/
 	union 
     {
 		int16_t s;
@@ -853,6 +863,7 @@ add_option(char *cp, int tag, char *optname, char *optval)
 	*cp++ = u.c[0];
 	*cp++ = u.c[1];
 	strcpy(cp, optname);
+
 	cp += n;
 	n = strlen(optval);
 	u.s = htons(n);
@@ -860,6 +871,7 @@ add_option(char *cp, int tag, char *optname, char *optval)
 	*cp++ = u.c[1];
 	strcpy(cp, optval);
 
+    /*返回首部中下一部分应该开始的地址*/
 	return(cp + n);
 }
 
@@ -895,7 +907,6 @@ void *printer_thread(void *arg)
 		 * Get a job to print.
 		 */
 		pthread_mutex_lock(&joblock);
-
 		while (NULL == jobhead) 
         {
 			log_msg("printer_thread: waiting...");
@@ -905,6 +916,7 @@ void *printer_thread(void *arg)
 		log_msg("printer_thread: picked up job %ld", jp->jobid);
 		pthread_mutex_unlock(&joblock);
 
+        /*将下一个作业号写入到/var/spool/printer/jobno中*/
 		update_jobno();
 
 		/*
@@ -931,7 +943,7 @@ void *printer_thread(void *arg)
 		sprintf(name, "%s/%s/%ld", SPOOLDIR, DATADIR, jp->jobid);
 		if ((fd = open(name, O_RDONLY)) < 0) 
         {
-			log_msg("job %ld canceled - can't open %s: %s",
+			log_msg("job %ld canceled - can't open %s: %s", \
 			  jp->jobid, name, strerror(errno));
 			free(jp);
 			continue;
@@ -939,13 +951,14 @@ void *printer_thread(void *arg)
 
 		if (fstat(fd, &sbuf) < 0) 
         {
-			log_msg("job %ld canceled - can't fstat %s: %s",
+			log_msg("job %ld canceled - can't fstat %s: %s", \
 			  jp->jobid, name, strerror(errno));
 			free(jp);
 			close(fd);
 			continue;
 		}
 
+        /*建立与打印机的tcp连接*/
 		if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
         {
 			log_msg("job %ld deferred - can't create socket: %s",
@@ -970,16 +983,22 @@ void *printer_thread(void *arg)
 		hp->minor_version = 1;
 		hp->operation = htons(OP_PRINT_JOB);
 		hp->request_id = htonl(jp->jobid);
+
 		icp += offsetof(struct ipp_hdr, attr_group);
 		*icp++ = TAG_OPERATION_ATTR;
+
 		icp = add_option(icp, TAG_CHARSET, "attributes-charset", \
 		  "utf-8");
+
 		icp = add_option(icp, TAG_NATULANG, \
 		  "attributes-natural-language", "en-us");
 		sprintf(str, "http://%s:%d", printer_name, IPP_PORT);
+
 		icp = add_option(icp, TAG_URI, "printer-uri", str);
+
 		icp = add_option(icp, TAG_NAMEWOLANG, \
 		  "requesting-user-name", jp->req.usernm);
+
 		icp = add_option(icp, TAG_NAMEWOLANG, "job-name", \
 		  jp->req.jobnm);
 
@@ -993,7 +1012,9 @@ void *printer_thread(void *arg)
 			icp = add_option(icp, TAG_MIMETYPE, "document-format", \
 			  "application/postscript");
 		}
+
 		*icp++ = TAG_END_OF_ATTR;
+
 		ilen = icp - ibuf;
 
 		/*
@@ -1011,6 +1032,7 @@ void *printer_thread(void *arg)
 		hcp += strlen(hcp);
 		*hcp++ = '\r';
 		*hcp++ = '\n';
+
 		hlen = hcp - hbuf;
 
 		/*
@@ -1061,6 +1083,7 @@ void *printer_thread(void *arg)
 		}
 
 defer:
+        /*清理，延迟，try again*/
 		close(fd);
 
         if (sockfd >= 0)
@@ -1079,7 +1102,7 @@ defer:
 /*
  * Read data from the printer, possibly increasing the buffer.
  * Returns offset of end of data in buffer or -1 on failure.
- *
+ *读取来自打印机的部分响应消息
  * LOCKING: none.
  */
 ssize_t readmore(int sockfd, char **bpp, int off, int *bszp)
@@ -1090,6 +1113,7 @@ ssize_t readmore(int sockfd, char **bpp, int off, int *bszp)
 
 	if (off >= bsz) 
     {
+        /*动态调整缓冲区*/
 		bsz += IOBUFSZ;
         if (NULL == (bp = realloc(*bpp, bsz)))
         {
